@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SPA Dashboard · River Edge Advisors</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#f8f7f5;--surface:#ffffff;--surface2:#f1f0ee;
+    --text:#1a1917;--text2:#52514e;--text3:#898781;
+    --border:#e1e0d9;--border2:#c3c2b7;
+    --accent:#2a78d6;--accent-bg:#e6f1fb;--accent-dark:#185fa5;
+    --success:#1baf7a;--success-bg:#e1f5ee;
+    --danger:#e34948;--danger-bg:#fcebeb;
+    --warn:#eda100;--warn-bg:#faeeda;
+    --purple:#4a3aa7;--purple-bg:#eeedfe;
+    --gray:#888780;--gray-bg:#f1f0e8;
+    --radius:8px;--shadow:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  }
+  @media(prefers-color-scheme:dark){
+    :root{
+      --bg:#111110;--surface:#1a1a19;--surface2:#222221;
+      --text:#f5f4f0;--text2:#c3c2b7;--text3:#898781;
+      --border:#2c2c2a;--border2:#383835;
+      --accent:#3987e5;--accent-bg:#0c447c;--accent-dark:#85b7eb;
+      --success:#199e70;--success-bg:#085041;
+      --danger:#e66767;--danger-bg:#501313;
+      --warn:#c98500;--warn-bg:#633806;
+      --purple:#9085e9;--purple-bg:#3c3489;
+      --gray:#888780;--gray-bg:#2c2c2a;
+    }
+  }
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;min-height:100vh}
+  a{color:var(--accent);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* Layout */
+  .sidebar{position:fixed;top:0;left:0;width:220px;height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100}
+  .main{margin-left:220px;padding:2rem}
+  @media(max-width:768px){.sidebar{width:100%;height:auto;position:relative}.main{margin-left:0;padding:1rem}}
+
+  /* Sidebar */
+  .logo{padding:1.25rem 1.25rem 1rem;border-bottom:1px solid var(--border)}
+  .logo-name{font-size:15px;font-weight:600;color:var(--text);letter-spacing:-.2px}
+  .logo-sub{font-size:11px;color:var(--text3);margin-top:1px}
+  .nav{padding:.75rem 0;flex:1}
+  .nav-label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.6px;padding:.5rem 1.25rem .25rem}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:.5rem 1.25rem;font-size:13px;color:var(--text2);cursor:pointer;border-radius:0;transition:background .12s}
+  .nav-item:hover{background:var(--surface2);color:var(--text)}
+  .nav-item.active{background:var(--accent-bg);color:var(--accent-dark);font-weight:500}
+  .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
+  .nav-item.active svg{opacity:1}
+  .sidebar-footer{padding:1rem 1.25rem;border-top:1px solid var(--border);font-size:11px;color:var(--text3)}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block;margin-right:5px}
+
+  /* Header */
+  .page-header{margin-bottom:1.75rem}
+  .page-title{font-size:22px;font-weight:600;color:var(--text);letter-spacing:-.3px}
+  .page-sub{font-size:13px;color:var(--text3);margin-top:3px}
+  .header-row{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+
+  /* Panels */
+  .panel{display:none}.panel.active{display:block}
+
+  /* KPI grid */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.75rem}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+  .kpi-label{font-size:11px;color:var(--text3);font-weight:500;text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px}
+  .kpi-val{font-size:24px;font-weight:600;color:var(--text);line-height:1.1;letter-spacing:-.5px}
+  .kpi-sub{font-size:11px;color:var(--text3);margin-top:3px}
+  .kpi-trend-up{color:var(--success);font-size:11px;margin-top:3px}
+  .kpi-trend-dn{color:var(--danger);font-size:11px;margin-top:3px}
+
+  /* Cards */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem;margin-bottom:1.25rem}
+  .card-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:1rem;display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .card-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+
+  /* Tables */
+  .tbl-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{background:var(--surface2);padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:var(--surface2)}
+  .td-num{text-align:right;font-variant-numeric:tabular-nums}
+  .td-id{color:var(--accent);font-size:11px;font-family:monospace}
+
+  /* Badges */
+  .badge{display:inline-block;font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+  .b-perf{background:var(--success-bg);color:var(--success)}
+  .b-coll{background:var(--warn-bg);color:var(--warn)}
+  .b-def{background:var(--danger-bg);color:var(--danger)}
+  .b-delinq{background:var(--warn-bg);color:#854F0B}
+  .b-paid{background:var(--accent-bg);color:var(--accent-dark)}
+  .b-refi{background:var(--purple-bg);color:var(--purple)}
+  .b-slow{background:var(--gray-bg);color:var(--gray)}
+  .badge-new{background:var(--success-bg);color:var(--success)}
+  .badge-ren{background:var(--purple-bg);color:var(--purple)}
+
+  /* Controls */
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:1rem}
+  input[type=text],select{font-size:12px;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);outline:none}
+  input[type=text]:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+  input[type=file]{display:none}
+  .btn{font-size:12px;padding:6px 14px;border:1px solid var(--border2);border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .12s}
+  .btn:hover{background:var(--surface2)}
+  .btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .btn-primary:hover{background:var(--accent-dark);border-color:var(--accent-dark)}
+  .count-chip{font-size:11px;color:var(--text3);background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:2px 8px}
+
+  /* Upload zone */
+  .upload-zone{border:2px dashed var(--border2);border-radius:var(--radius);padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:all .15s}
+  .upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--accent-bg)}
+  .upload-title{font-size:14px;font-weight:500;color:var(--text);margin-bottom:.25rem}
+  .upload-sub{font-size:12px;color:var(--text3)}
+
+  /* Charts */
+  .chart-wrap{position:relative;width:100%}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px;font-size:11px;color:var(--text2)}
+  .leg-item{display:flex;align-items:center;gap:5px}
+  .leg-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+
+  /* Variance */
+  .pos{color:var(--danger)}.neg{color:var(--success)}
+
+  /* Alert */
+  .alert{background:var(--warn-bg);border:1px solid var(--warn);border-radius:var(--radius);padding:.75rem 1rem;font-size:12px;color:var(--text);margin-bottom:1rem;display:flex;gap:.5rem;align-items:flex-start}
+
+  /* Steps */
+  .steps{counter-reset:step}
+  .step{display:flex;gap:1rem;margin-bottom:1.5rem;align-items:flex-start}
+  .step-num{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+  .step-body{flex:1}
+  .step-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:.25rem}
+  .step-desc{font-size:12px;color:var(--text2);line-height:1.6}
+  code{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:11px;font-family:monospace;color:var(--text)}
+  .code-block{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;font-family:monospace;font-size:12px;color:var(--text);white-space:pre-wrap;overflow-x:auto;margin:.5rem 0}
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-name">SPA Dashboard</div>
+    <div class="logo-sub">River Edge Advisors</div>
+  </div>
+  <div class="nav">
+    <div class="nav-label">Reports</div>
+    <div class="nav-item active" onclick="showPanel('overview',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+      Portfolio overview
+    </div>
+    <div class="nav-item" onclick="showPanel('monthly',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"/></svg>
+      Monthly funded
+    </div>
+    <div class="nav-item" onclick="showPanel('commissions',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Commissions
+    </div>
+    <div class="nav-item" onclick="showPanel('alldeals',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
+      All active deals
+    </div>
+    <div class="nav-label" style="margin-top:.5rem">Setup</div>
+    <div class="nav-item" onclick="showPanel('upload',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+      Upload data
+    </div>
+    <div class="nav-item" onclick="showPanel('deploy',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253M3.284 14.253A8.959 8.959 0 013 12c0-1.016.167-1.994.473-2.909"/></svg>
+      GitHub Pages setup
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <span class="status-dot"></span>May 26, 2026 snapshot
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- OVERVIEW -->
+  <div id="overview" class="panel active">
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">Portfolio overview</div>
+        <div class="page-sub">All active deals · May 26, 2026</div>
+      </div>
+      <label class="btn btn-primary" style="cursor:pointer">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        Refresh from CSV
+        <input type="file" accept=".csv" id="overview-upload" onchange="loadCSV(event)">
+      </label>
+    </div>
+    <div class="kpi-grid" id="ov-kpis"></div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">Deal status breakdown</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="statusChart"></canvas></div>
+        <div class="legend" id="statusLegend"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Monthly fundings (2026)</div>
+        <div class="chart-wrap" style="height:200px"><canvas id="monthChart"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Top ISOs — May 2026</div>
+      <div class="tbl-wrap"><table id="iso-tbl"></table></div>
+    </div>
+  </div>
+
+  <!-- MONTHLY FUNDED -->
+  <div id="monthly" class="panel">
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">Monthly funded deals</div>
+        <div class="page-sub" id="monthly-sub">May 2026 · 18 deals</div>
+      </div>
+      <select id="month-select" onchange="renderMonthly()" style="font-size:12px">
+        <option value="2026-05">May 2026</option>
+      </select>
+    </div>
+    <div class="kpi-grid" id="mo-kpis"></div>
+    <div class="card">
+      <div class="card-title">
+        Funded deals — deal detail
+        <input type="text" placeholder="Search..." id="mo-search" oninput="filterMonthly()" style="width:160px">
+      </div>
+      <div class="tbl-wrap"><table id="mo-tbl"></table></div>
+    </div>
+  </div>
+
+  <!-- COMMISSIONS -->
+  <div id="commissions" class="panel">
+    <div class="page-header">
+      <div class="page-title">Commissions</div>
+      <div class="page-sub">May 2026 · 18 deals</div>
+    </div>
+    <div class="kpi-grid" id="cm-kpis"></div>
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-title">Commission by ISO</div>
+        <div class="chart-wrap" id="comm-chart-wrap" style="height:240px"><canvas id="commChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">New vs. renewal</div>
+        <div class="chart-wrap" style="height:180px"><canvas id="typeChart"></canvas></div>
+        <div class="legend" id="typeLegend"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Commission detail</div>
+      <div class="tbl-wrap"><table id="cm-tbl"></table></div>
+    </div>
+  </div>
+
+  <!-- ALL DEALS -->
+  <div id="alldeals" class="panel">
+    <div class="page-header">
+      <div class="page-title">All active deals</div>
+      <div class="page-sub">Salesforce SPA export</div>
+    </div>
+    <div class="controls">
+      <input type="text" placeholder="Search merchant or AGR#..." id="all-search" oninput="filterAll()" style="width:220px">
+      <select id="all-status" onchange="filterAll()">
+        <option value="">All statuses</option>
+        <option>Performing</option><option>Delinquent</option><option>Default</option>
+        <option>In Collections</option><option>Slow Pay</option><option>Paid in Full</option>
+      </select>
+      <select id="all-freq" onchange="filterAll()">
+        <option value="">All frequencies</option>
+        <option>Daily</option><option>Weekly</option>
+      </select>
+      <span class="count-chip" id="all-count"></span>
+    </div>
+    <div class="tbl-wrap"><table id="all-tbl"></table></div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div id="upload" class="panel">
+    <div class="page-header">
+      <div class="page-title">Upload data</div>
+      <div class="page-sub">Refresh the dashboard with a new Salesforce CSV export</div>
+    </div>
+    <div class="card">
+      <div class="card-title">SPA report (Salesforce export)</div>
+      <label class="upload-zone" for="main-upload" id="upload-zone"
+        ondragover="this.classList.add('drag');event.preventDefault()"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleDrop(event)">
+        <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .75rem;display:block;color:#898781"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        <div class="upload-title">Drop CSV file here or click to browse</div>
+        <div class="upload-sub">Export the SPA report from Salesforce as CSV, then upload it here</div>
+        <input type="file" id="main-upload" accept=".csv" onchange="loadCSV(event)" style="display:none">
+      </label>
+      <div id="upload-status" style="font-size:12px;color:var(--text3);margin-top:.5rem"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Expected CSV columns</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Column name</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>Agreement URL</code></td><td>AGR number (e.g. AGR-0001034)</td></tr>
+            <tr><td><code>Opportunity: Opportunity Name</code></td><td>Merchant business name</td></tr>
+            <tr><td><code>Opportunity: Funded Date</code></td><td>Funding date</td></tr>
+            <tr><td><code>Agreement Amount</code></td><td>Advance amount funded</td></tr>
+            <tr><td><code>Repayment Amount</code></td><td>Total payback</td></tr>
+            <tr><td><code>Sell Rate</code></td><td>Factor rate</td></tr>
+            <tr><td><code>Current Balance</code></td><td>Remaining balance</td></tr>
+            <tr><td><code>Status Detail</code></td><td>Performing / Default / Delinquent etc.</td></tr>
+            <tr><td><code>Referral Source: Account Name</code></td><td>ISO name</td></tr>
+            <tr><td><code>Opportunity: Payment Frequency</code></td><td>Daily / Weekly</td></tr>
+            <tr><td><code>Payer: Shipping State/Province</code></td><td>Merchant state</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DEPLOY -->
+  <div id="deploy" class="panel">
+    <div class="page-header">
+      <div class="page-title">GitHub Pages setup</div>
+      <div class="page-sub">Step-by-step guide to publish this dashboard as a live website</div>
+    </div>
+    <div class="card">
+      <div class="card-title">What you'll get</div>
+      <p style="font-size:13px;color:var(--text2);line-height:1.7">A permanent URL like <code>yourname.github.io/spa-dashboard</code> that you can bookmark, share with your team, and update whenever you upload a new CSV. Free, no monthly fees, no server to manage.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Step-by-step instructions</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Create a free GitHub account</div>
+            <div class="step-desc">Go to <a href="https://github.com" target="_blank">github.com</a> → click "Sign up" → enter your email, password, and username. Verify your email. Free plan is all you need.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Create a new repository</div>
+            <div class="step-desc">After logging in, click the <strong>+</strong> icon (top right) → "New repository". Name it <code>spa-dashboard</code>. Set it to <strong>Public</strong>. Check "Add a README file". Click "Create repository".</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Upload your dashboard files</div>
+            <div class="step-desc">Inside your new repository, click <strong>Add file → Upload files</strong>. Drag and drop the files you downloaded from Claude (<code>index.html</code>). Click "Commit changes".</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Enable GitHub Pages</div>
+            <div class="step-desc">In your repository, go to <strong>Settings → Pages</strong> (left sidebar). Under "Source", select <strong>Deploy from a branch</strong>. Branch: <code>main</code>, folder: <code>/ (root)</code>. Click Save. Wait ~2 minutes.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Your dashboard is live</div>
+            <div class="step-desc">GitHub will show your URL at the top of the Pages settings page: <code>https://[your-username].github.io/spa-dashboard</code>. Bookmark it. Share it with your team.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">6</div>
+          <div class="step-body">
+            <div class="step-title">Updating data going forward</div>
+            <div class="step-desc">Each month: export the SPA report CSV from Salesforce → open your dashboard URL → go to "Upload data" tab → drop in the new CSV. The dashboard refreshes instantly in your browser. To permanently update the hosted version, re-upload <code>index.html</code> to GitHub (we'll automate this later).</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Need help?</div>
+      <p style="font-size:13px;color:var(--text2)">If you get stuck on any step, take a screenshot and share it with Claude — we can troubleshoot together and update the files as needed.</p>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const MAY_DEALS=[
+  {agr:"AGR-0001034",merchant:"Polaris Cabinets & Design",iso:"LendBull",type:"New",amount:40000,factor:1.49,payback:59600,merchantNet:37600,commFee:4800,origFee:2400,deferredRev:19600,achAmt:37600,bankTx:37600,variance:0,balance:51085.72,status:"Performing"},
+  {agr:"AGR-0001035",merchant:"The Nova Villas Group",iso:"United Secured Capital",type:"Renewal",amount:35000,factor:1.42,payback:49700,merchantNet:32900,commFee:2450,origFee:2100,deferredRev:14700,achAmt:32900,bankTx:19788,variance:13112,balance:42053.8,status:"Performing"},
+  {agr:"AGR-0001036",merchant:"Kelsdge Solution, Inc.",iso:"Secure Way Capital",type:"New",amount:12000,factor:1.49,payback:17880,merchantNet:11040,commFee:1440,origFee:960,deferredRev:5880,achAmt:11040,bankTx:11040,variance:0,balance:14661.6,status:"Performing"},
+  {agr:"AGR-0001037",merchant:"Fluffies Hot Chicken",iso:"Fortifi Capital",type:"Renewal",amount:190000,factor:1.49,payback:283100,merchantNet:171000,commFee:22800,origFee:19000,deferredRev:93100,achAmt:171000,bankTx:100421,variance:70579,balance:240634.94,status:"Performing"},
+  {agr:"AGR-0001038",merchant:"DPJ Construction & Design",iso:"LendBull",type:"New",amount:20000,factor:1.49,payback:29800,merchantNet:19000,commFee:2200,origFee:1000,deferredRev:9800,achAmt:19000,bankTx:19000,variance:0,balance:26074.99,status:"Performing"},
+  {agr:"AGR-0001039",merchant:"Disaster IQ, Inc.",iso:"United Secured Capital",type:"Renewal",amount:70000,factor:1.49,payback:104300,merchantNet:65800,commFee:7700,origFee:4200,deferredRev:34300,achAmt:65800,bankTx:41943,variance:23857,balance:97346.66,status:"Performing"},
+  {agr:"AGR-0001040",merchant:"EZ Electric LLC",iso:"United Secured Capital",type:"New",amount:10000,factor:1.49,payback:14900,merchantNet:9000,commFee:1100,origFee:1000,deferredRev:4900,achAmt:9000,bankTx:9000,variance:0,balance:12380.68,status:"Performing"},
+  {agr:"AGR-0001041",merchant:"Jaime A Goldstein LLC",iso:"Exquisite Group Worldwide",type:"New",amount:10000,factor:1.49,payback:14900,merchantNet:9200,commFee:1100,origFee:800,deferredRev:4900,achAmt:9200,bankTx:9200,variance:0,balance:13244.44,status:"Performing"},
+  {agr:"AGR-0001042",merchant:"MyRide SC, LLC",iso:"Pivot Capital Group",type:"Renewal",amount:45000,factor:1.49,payback:67050,merchantNet:41400,commFee:5400,origFee:3600,deferredRev:25650,achAmt:41400,bankTx:41400,variance:0,balance:61462.5,status:"Performing"},
+  {agr:"AGR-0001043",merchant:"David Jackson CM Remodeling",iso:"Direct Lending Capital",type:"Renewal",amount:20000,factor:1.49,payback:29800,merchantNet:18800,commFee:2400,origFee:1200,deferredRev:11000,achAmt:18800,bankTx:18800,variance:0,balance:27208.7,status:"Performing"},
+  {agr:"AGR-0001044",merchant:"Lotno2 LLC",iso:"United Secured Capital",type:"Renewal",amount:120000,factor:1.39,payback:166800,merchantNet:112800,commFee:6000,origFee:7200,deferredRev:54000,achAmt:112800,bankTx:112800,variance:0,balance:160997,status:"Performing"},
+  {agr:"AGR-0001045",merchant:"Overflow Coffee L3C",iso:"Gold Capital Funding",type:"Renewal",amount:20000,factor:1.49,payback:29800,merchantNet:18800,commFee:2200,origFee:1200,deferredRev:11000,achAmt:18800,bankTx:18800,variance:0,balance:27813.36,status:"Performing"},
+  {agr:"AGR-0001046",merchant:"Collins Construction & Remodeling",iso:"Fortifi Capital",type:"Renewal",amount:15000,factor:1.49,payback:22350,merchantNet:13500,commFee:1800,origFee:1500,deferredRev:8850,achAmt:13500,bankTx:13500,variance:0,balance:21046.25,status:"Performing"},
+  {agr:"AGR-0001047",merchant:"The Flaming Fish, LLC",iso:"United Secured Capital",type:"Renewal",amount:25000,factor:1.49,payback:37250,merchantNet:23000,commFee:2750,origFee:2000,deferredRev:14250,achAmt:23000,bankTx:23000,variance:0,balance:35530.76,status:"Performing"},
+  {agr:"AGR-0001048",merchant:"Grooming by Galdy, Inc.",iso:"United Secured Capital",type:"Renewal",amount:10000,factor:1.49,payback:14900,merchantNet:9000,commFee:1100,origFee:1000,deferredRev:5900,achAmt:9000,bankTx:9000,variance:0,balance:13968.75,status:"Performing"},
+  {agr:"AGR-0001049",merchant:"Foothills Woodturning LLC",iso:"United Secured Capital",type:"Renewal",amount:37500,factor:1.49,payback:55875,merchantNet:35250,commFee:4125,origFee:2250,deferredRev:20625,achAmt:35250,bankTx:35250,variance:0,balance:53081.25,status:"Performing"},
+  {agr:"AGR-0001050",merchant:"Active Signs Innovations LLC",iso:"United Secured Capital",type:"Renewal",amount:70000,factor:1.49,payback:104300,merchantNet:65800,commFee:6300,origFee:4200,deferredRev:38500,achAmt:65800,bankTx:65800,variance:0,balance:101320,status:"Performing"},
+  {agr:"AGR-0001051",merchant:"PrestigeLightingGroup LLC",iso:"United Secured Capital",type:"New",amount:12500,factor:1.49,payback:18625,merchantNet:11250,commFee:1375,origFee:1250,deferredRev:7375,achAmt:11250,bankTx:11250,variance:0,balance:17383.32,status:"Performing"},
+];
+const COMMISSIONS=[
+  {agr:"AGR-0001034",iso:"LendBull",merchant:"Polaris Cabinets",type:"New",amount:40000,feePct:0.06,feeAmt:2400,commPct:0.12,commAmt:4800,isoOver:0,salesOver:800,totalPct:0.14,total:5600,net:5600,datePaid:"2026-05-14"},
+  {agr:"AGR-0001035",iso:"United Secured Capital",merchant:"Nova Villas Group",type:"Renewal",amount:35000,feePct:0.06,feeAmt:2100,commPct:0.07,commAmt:2450,isoOver:1050,salesOver:0,totalPct:0.10,total:3500,net:3500,datePaid:"2026-05-14"},
+  {agr:"AGR-0001036",iso:"Secure Way Capital",merchant:"Kelsdge",type:"New",amount:12000,feePct:0.08,feeAmt:960,commPct:0.12,commAmt:1440,isoOver:240,salesOver:0,totalPct:0.14,total:1680,net:1680,datePaid:"2026-05-21"},
+  {agr:"AGR-0001037",iso:"Fortifi Capital",merchant:"Fluffies Hot Chicken",type:"Renewal",amount:190000,feePct:0.10,feeAmt:19000,commPct:0.12,commAmt:22800,isoOver:0,salesOver:3800,totalPct:0.14,total:26600,net:26600,datePaid:"2026-05-21"},
+  {agr:"AGR-0001038",iso:"LendBull",merchant:"DPJ Construction",type:"New",amount:20000,feePct:0.05,feeAmt:1000,commPct:0.11,commAmt:2200,isoOver:0,salesOver:400,totalPct:0.13,total:2600,net:2600,datePaid:"2026-05-28"},
+  {agr:"AGR-0001039",iso:"United Secured Capital",merchant:"Disaster IQ",type:"Renewal",amount:70000,feePct:0.06,feeAmt:4200,commPct:0.11,commAmt:7700,isoOver:2100,salesOver:0,totalPct:0.14,total:9800,net:9800,datePaid:"2026-06-04"},
+  {agr:"AGR-0001040",iso:"United Secured Capital",merchant:"EZ Electric",type:"New",amount:10000,feePct:0.10,feeAmt:1000,commPct:0.11,commAmt:1100,isoOver:300,salesOver:0,totalPct:0.14,total:1400,net:1400,datePaid:"2026-06-04"},
+  {agr:"AGR-0001041",iso:"Exquisite Group Worldwide",merchant:"Jaime A Goldstein",type:"New",amount:10000,feePct:0.08,feeAmt:800,commPct:0.11,commAmt:1100,isoOver:0,salesOver:200,totalPct:0.13,total:1300,net:1300,datePaid:"2026-06-04"},
+  {agr:"AGR-0001042",iso:"Pivot Capital Group",merchant:"Myride",type:"Renewal",amount:45000,feePct:0.08,feeAmt:3600,commPct:0.12,commAmt:5400,isoOver:0,salesOver:900,totalPct:0.14,total:6300,net:6300,datePaid:"2026-06-04"},
+  {agr:"AGR-0001043",iso:"Direct Lending Capital",merchant:"David Jackson CM Remodeling",type:"Renewal",amount:20000,feePct:0.06,feeAmt:1200,commPct:0.12,commAmt:2400,isoOver:0,salesOver:400,totalPct:0.14,total:2800,net:2800,datePaid:"2026-06-04"},
+  {agr:"AGR-0001044",iso:"United Secured Capital",merchant:"Lotno2",type:"Renewal",amount:120000,feePct:0.06,feeAmt:7200,commPct:0.05,commAmt:6000,isoOver:0,salesOver:2400,totalPct:0.07,total:8400,net:8400,datePaid:"bouncing"},
+  {agr:"AGR-0001045",iso:"Gold Capital Funding",merchant:"Overflow Coffee",type:"Renewal",amount:20000,feePct:0.06,feeAmt:1200,commPct:0.11,commAmt:2200,isoOver:0,salesOver:400,totalPct:0.13,total:2600,net:2600,datePaid:"2026-06-04"},
+  {agr:"AGR-0001046",iso:"Fortifi Capital",merchant:"Collins Construction",type:"Renewal",amount:15000,feePct:0.10,feeAmt:1500,commPct:0.12,commAmt:1800,isoOver:0,salesOver:300,totalPct:0.14,total:2100,net:2100,datePaid:"2026-06-04"},
+  {agr:"AGR-0001047",iso:"United Secured Capital",merchant:"The Flaming Fish",type:"Renewal",amount:25000,feePct:0.08,feeAmt:2000,commPct:0.11,commAmt:2750,isoOver:750,salesOver:0,totalPct:0.14,total:3500,net:3500,datePaid:"2026-06-11"},
+  {agr:"AGR-0001048",iso:"United Secured Capital",merchant:"Grooming by Galdy",type:"Renewal",amount:10000,feePct:0.10,feeAmt:1000,commPct:0.11,commAmt:1100,isoOver:300,salesOver:0,totalPct:0.14,total:1400,net:1400,datePaid:"2026-06-11"},
+  {agr:"AGR-0001049",iso:"United Secured Capital",merchant:"Foothills Woodturning",type:"Renewal",amount:37500,feePct:0.06,feeAmt:2250,commPct:0.11,commAmt:4125,isoOver:1125,salesOver:0,totalPct:0.14,total:5250,net:5250,datePaid:"2026-06-11"},
+  {agr:"AGR-0001050",iso:"United Secured Capital",merchant:"Active Signs Innovations",type:"Renewal",amount:70000,feePct:0.06,feeAmt:4200,commPct:0.09,commAmt:6300,isoOver:0,salesOver:2100,totalPct:0.12,total:8400,net:8400,datePaid:"2026-06-11"},
+  {agr:"AGR-0001051",iso:"United Secured Capital",merchant:"Prestige Lighting Group",type:"New",amount:12500,feePct:0.10,feeAmt:1250,commPct:0.11,commAmt:1375,isoOver:375,salesOver:0,totalPct:0.14,total:1750,net:1750,datePaid:"bouncing"},
+];
+
+let RAW_DATA=[];
+
+const fmt=v=>'$'+Math.round(v).toLocaleString();
+const pct=v=>(v*100).toFixed(1)+'%';
+
+function statusBadge(s){
+  const m={Performing:'b-perf','In Collections':'b-coll',Default:'b-def',Delinquent:'b-delinq','Paid in Full':'b-paid',Refinanced:'b-refi','Slow Pay':'b-slow'};
+  return`<span class="badge ${m[s]||'b-slow'}">${s}</span>`;
+}
+
+function showPanel(id,el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  el.classList.add('active');
+}
+
+function buildOverview(){
+  const data=RAW_DATA.length?RAW_DATA:MAY_DEALS;
+  const totalBal=MAY_DEALS.reduce((a,b)=>a+b.balance,0);
+  const mayAmt=MAY_DEALS.reduce((a,b)=>a+b.amount,0);
+  const deferred=MAY_DEALS.reduce((a,b)=>a+b.deferredRev,0);
+  const totalComm=COMMISSIONS.reduce((a,b)=>a+b.total,0);
+  const variances=MAY_DEALS.filter(d=>d.variance>0).length;
+  document.getElementById('ov-kpis').innerHTML=[
+    {l:'May funded',v:fmt(mayAmt),s:'18 deals'},
+    {l:'Total payback',v:fmt(MAY_DEALS.reduce((a,b)=>a+b.payback,0)),s:'Repayment amount'},
+    {l:'Deferred revenue',v:fmt(deferred),s:'Recognized over time'},
+    {l:'Total commissions',v:fmt(totalComm),s:'May 2026'},
+    {l:'Portfolio balance',v:fmt(totalBal),s:'Open positions'},
+    {l:'Variance deals',v:variances,s:'Bank tx differs from ACH'},
+  ].map(k=>`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val">${typeof k.v==='number'?k.v.toLocaleString():k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+
+  const statusCounts={};
+  MAY_DEALS.forEach(d=>{statusCounts[d.status]=(statusCounts[d.status]||0)+1});
+  const sLabels=Object.keys(statusCounts),sData=Object.values(statusCounts);
+  const colors=['#2a78d6','#1baf7a','#eda100','#e34948','#4a3aa7','#e87ba4','#eb6834'];
+  const sc=document.getElementById('statusChart');
+  if(sc._chart) sc._chart.destroy();
+  sc._chart=new Chart(sc,{type:'doughnut',data:{labels:sLabels,datasets:[{data:sData,backgroundColor:colors,borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  document.getElementById('statusLegend').innerHTML=sLabels.map((l,i)=>`<span class="leg-item"><span class="leg-sq" style="background:${colors[i]}"></span>${l} (${statusCounts[l]})</span>`).join('');
+
+  const byMonth={};
+  MAY_DEALS.forEach(d=>{const m=d.agr.replace('AGR-','').substring(0,4);});
+  const months={'2026-05':18};
+  const mc=document.getElementById('monthChart');
+  if(mc._chart) mc._chart.destroy();
+  mc._chart=new Chart(mc,{type:'bar',data:{labels:['May 2026'],datasets:[{label:'Deals',data:[18],backgroundColor:'#2a78d6',borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+  const isoTotals={};
+  MAY_DEALS.forEach(d=>{if(!isoTotals[d.iso])isoTotals[d.iso]={count:0,amt:0,comm:0};isoTotals[d.iso].count++;isoTotals[d.iso].amt+=d.amount;});
+  COMMISSIONS.forEach(d=>{if(isoTotals[d.iso])isoTotals[d.iso].comm+=d.total;});
+  const sorted=Object.entries(isoTotals).sort((a,b)=>b[1].amt-a[1].amt);
+  document.getElementById('iso-tbl').innerHTML=`<thead><tr><th>ISO</th><th>Deals</th><th class="td-num">Funded</th><th class="td-num">Commission</th></tr></thead><tbody>`+sorted.map(([iso,v])=>`<tr><td>${iso}</td><td>${v.count}</td><td class="td-num">${fmt(v.amt)}</td><td class="td-num">${fmt(v.comm)}</td></tr>`).join('')+'</tbody>';
+}
+
+function buildMonthly(){
+  const total=MAY_DEALS.reduce((a,b)=>a+b.amount,0);
+  const deferred=MAY_DEALS.reduce((a,b)=>a+b.deferredRev,0);
+  const variance=MAY_DEALS.reduce((a,b)=>a+b.variance,0);
+  const comm=COMMISSIONS.reduce((a,b)=>a+b.total,0);
+  document.getElementById('mo-kpis').innerHTML=[
+    {l:'Total funded',v:fmt(total)},{l:'Deferred revenue',v:fmt(deferred)},
+    {l:'Commissions',v:fmt(comm)},{l:'Total variance',v:fmt(variance)},
+  ].map(k=>`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val">${k.v}</div></div>`).join('');
+  renderMonthlyTable(MAY_DEALS);
+}
+
+function renderMonthlyTable(data){
+  document.getElementById('mo-tbl').innerHTML=`<thead><tr><th>Agreement</th><th>Merchant</th><th>ISO</th><th>Type</th><th class="td-num">Amount</th><th class="td-num">Merchant net</th><th class="td-num">Commission</th><th class="td-num">Orig. fee</th><th class="td-num">Deferred rev.</th><th class="td-num">ACH amt</th><th class="td-num">Bank tx</th><th class="td-num">Variance</th><th>Status</th></tr></thead><tbody>`+
+  data.map(d=>`<tr><td class="td-id">${d.agr}</td><td>${d.merchant}</td><td>${d.iso}</td><td><span class="badge ${d.type=='New'?'badge-new':'badge-ren'}">${d.type}</span></td><td class="td-num">${fmt(d.amount)}</td><td class="td-num">${fmt(d.merchantNet)}</td><td class="td-num">${fmt(d.commFee)}</td><td class="td-num">${fmt(d.origFee)}</td><td class="td-num">${fmt(d.deferredRev)}</td><td class="td-num">${fmt(d.achAmt)}</td><td class="td-num">${fmt(d.bankTx)}</td><td class="td-num" style="color:${d.variance>0?'var(--danger)':'var(--text3)'}">${d.variance?fmt(d.variance):'-'}</td><td>${statusBadge(d.status)}</td></tr>`).join('')+'</tbody>';
+}
+
+function filterMonthly(){
+  const q=document.getElementById('mo-search').value.toLowerCase();
+  renderMonthlyTable(MAY_DEALS.filter(d=>d.merchant.toLowerCase().includes(q)||d.agr.toLowerCase().includes(q)||d.iso.toLowerCase().includes(q)));
+}
+
+function renderMonthly(){}
+
+function buildCommissions(){
+  const total=COMMISSIONS.reduce((a,b)=>a+b.total,0);
+  const fees=COMMISSIONS.reduce((a,b)=>a+b.feeAmt,0);
+  const iso=COMMISSIONS.reduce((a,b)=>a+b.isoOver,0);
+  const sales=COMMISSIONS.reduce((a,b)=>a+b.salesOver,0);
+  document.getElementById('cm-kpis').innerHTML=[
+    {l:'Total commission',v:fmt(total)},{l:'Origination fees',v:fmt(fees)},
+    {l:'ISO overrides',v:fmt(iso)},{l:'Sales overrides',v:fmt(sales)},
+  ].map(k=>`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val">${k.v}</div></div>`).join('');
+
+  const byISO={};
+  COMMISSIONS.forEach(d=>{byISO[d.iso]=(byISO[d.iso]||0)+d.total;});
+  const sorted=Object.entries(byISO).sort((a,b)=>b[1]-a[1]);
+  const h=Math.max(240,sorted.length*38+60);
+  document.getElementById('comm-chart-wrap').style.height=h+'px';
+  const cc=document.getElementById('commChart');
+  if(cc._chart) cc._chart.destroy();
+  cc._chart=new Chart(cc,{type:'bar',data:{labels:sorted.map(e=>e[0]),datasets:[{data:sorted.map(e=>e[1]),backgroundColor:'#2a78d6',borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{callback:v=>'$'+Math.round(v/1000)+'k',font:{size:10}}}}}});
+
+  const newAmt=COMMISSIONS.filter(d=>d.type=='New').reduce((a,b)=>a+b.amount,0);
+  const renAmt=COMMISSIONS.filter(d=>d.type=='Renewal').reduce((a,b)=>a+b.amount,0);
+  const tc=document.getElementById('typeChart');
+  if(tc._chart) tc._chart.destroy();
+  tc._chart=new Chart(tc,{type:'doughnut',data:{labels:['New','Renewal'],datasets:[{data:[newAmt,renAmt],backgroundColor:['#2a78d6','#1baf7a'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  document.getElementById('typeLegend').innerHTML=`<span class="leg-item"><span class="leg-sq" style="background:#2a78d6"></span>New: ${fmt(newAmt)}</span><span class="leg-item"><span class="leg-sq" style="background:#1baf7a"></span>Renewal: ${fmt(renAmt)}</span>`;
+
+  document.getElementById('cm-tbl').innerHTML=`<thead><tr><th>Agreement</th><th>ISO</th><th>Merchant</th><th>Type</th><th class="td-num">Amount</th><th class="td-num">Fee %</th><th class="td-num">Fee amt</th><th class="td-num">Comm %</th><th class="td-num">Commission</th><th class="td-num">ISO override</th><th class="td-num">Sales override</th><th class="td-num">Total %</th><th class="td-num">Total</th><th class="td-num">Net</th><th>Date paid</th></tr></thead><tbody>`+
+  COMMISSIONS.map(d=>`<tr><td class="td-id">${d.agr}</td><td>${d.iso}</td><td>${d.merchant}</td><td><span class="badge ${d.type=='New'?'badge-new':'badge-ren'}">${d.type}</span></td><td class="td-num">${fmt(d.amount)}</td><td class="td-num">${pct(d.feePct)}</td><td class="td-num">${fmt(d.feeAmt)}</td><td class="td-num">${pct(d.commPct)}</td><td class="td-num">${fmt(d.commAmt)}</td><td class="td-num">${d.isoOver?fmt(d.isoOver):'-'}</td><td class="td-num">${d.salesOver?fmt(d.salesOver):'-'}</td><td class="td-num">${pct(d.totalPct)}</td><td class="td-num"><strong>${fmt(d.total)}</strong></td><td class="td-num">${fmt(d.net)}</td><td style="color:${d.datePaid=='bouncing'?'var(--danger)':'var(--text3)'}">${d.datePaid}</td></tr>`).join('')+'</tbody>';
+}
+
+let allFiltered=[...MAY_DEALS];
+function buildAllDeals(data){
+  const d=data||allFiltered;
+  document.getElementById('all-count').textContent=`${d.length} deals`;
+  document.getElementById('all-tbl').innerHTML=`<thead><tr><th>Agreement</th><th>Merchant</th><th>ISO</th><th>Type</th><th class="td-num">Amount</th><th class="td-num">Factor</th><th class="td-num">Payback</th><th class="td-num">Balance</th><th>Status</th></tr></thead><tbody>`+
+  d.map(r=>`<tr><td class="td-id">${r.agr}</td><td>${r.merchant}</td><td>${r.iso}</td><td><span class="badge ${r.type=='New'?'badge-new':'badge-ren'}">${r.type}</span></td><td class="td-num">${fmt(r.amount)}</td><td class="td-num">${r.factor}x</td><td class="td-num">${fmt(r.payback)}</td><td class="td-num">${fmt(r.balance)}</td><td>${statusBadge(r.status)}</td></tr>`).join('')+'</tbody>';
+}
+
+function filterAll(){
+  const s=document.getElementById('all-status').value;
+  const f=document.getElementById('all-freq').value;
+  const q=document.getElementById('all-search').value.toLowerCase();
+  allFiltered=MAY_DEALS.filter(d=>{
+    if(s&&d.status!=s) return false;
+    if(q&&!d.merchant.toLowerCase().includes(q)&&!d.agr.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  buildAllDeals(allFiltered);
+}
+
+function loadCSV(e){
+  const file=e.target.files[0];
+  if(!file) return;
+  document.getElementById('upload-status').textContent=`Loading ${file.name}...`;
+  Papa.parse(file,{header:true,skipEmptyLines:true,complete:function(results){
+    RAW_DATA=results.data;
+    document.getElementById('upload-status').textContent=`✓ Loaded ${RAW_DATA.length} rows from ${file.name}`;
+    buildOverview();
+  }});
+}
+
+function handleDrop(e){
+  e.preventDefault();
+  document.getElementById('upload-zone').classList.remove('drag');
+  const file=e.dataTransfer.files[0];
+  if(file){const dt=new DataTransfer();dt.items.add(file);document.getElementById('main-upload').files=dt.files;loadCSV({target:{files:dt.files}});}
+}
+
+buildOverview();
+buildMonthly();
+buildCommissions();
+buildAllDeals();
+</script>
+</body>
+</html>
