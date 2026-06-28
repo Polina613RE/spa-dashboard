@@ -719,136 +719,279 @@ function processData() {
   alert(`✓ Done! ${processedDeals.length} deals processed. Renewal deals are highlighted in the Monthly Funded tab — enter their Bank Transaction amounts there.`);
 }
 
-// ── Excel Export ──────────────────────────────────────────────────────────────
+// ── Excel Export — formula-based, matching exact column order from your file ──
 function exportExcel(tab) {
   const deals = processedDeals.length ? processedDeals : SAMPLE_DEALS.map(calcDeal);
-  const month = (deals[0]?.funded || 'report').substring(0,7);
-  const wb = XLSX.utils.book_new();
+  if (!deals.length) { alert('No data loaded.'); return; }
 
-  if (tab === 'overview' || tab === 'alldeals') {
-    // All deals — full columns
-    const rows = deals.map(d => ({
-      'Agreement #':    d.agr,
-      'Merchant':       d.merchant,
-      'ISO':            d.iso,
-      'Type':           d.renewal ? 'Renewal' : 'New',
-      'Funded Date':    d.funded,
-      'Funded Amount':  d.amount,
-      'Repayment Amount': d.repayment,
-      'Origination Fee':  d.origFee,
-      'Commission Fee':   d.commFee,
-      'Merchant Net':     d.merchantNet,
-      'Deferred Revenue': d.deferredRev,
-      'ACH Amount':       d.achAmt,
-      'Bank Transaction': d.bankTx ?? '',
-      'Variance':         d.variance ?? '',
-      'Status':           d.status,
-      'Frequency':        d.freq,
-      'State':            d.state,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    formatSheet(ws, rows.length);
-    XLSX.utils.book_append_sheet(wb, ws, 'All Deals');
+  const funded0 = deals[0]?.funded || '';
+  const monthLabel = funded0 ? funded0.substring(5,7) + '.' + funded0.substring(0,4).slice(-2) : 'report';
+  const commSheet = `'${monthLabel} Commission'`;
+  const spaSheet  = `'${monthLabel} SPA'`;
 
-    // Summary sheet
-    const isoTotals = {};
-    deals.forEach(d => {
-      if (!isoTotals[d.iso]) isoTotals[d.iso] = {Deals:0, 'Funded Amount':0, 'Commission Fee':0, 'Origination Fee':0};
-      isoTotals[d.iso].Deals++;
-      isoTotals[d.iso]['Funded Amount'] += d.amount;
-      isoTotals[d.iso]['Commission Fee'] += d.commFee;
-      isoTotals[d.iso]['Origination Fee'] += d.origFee;
-    });
-    const summaryRows = Object.entries(isoTotals)
-      .sort((a,b) => b[1]['Funded Amount'] - a[1]['Funded Amount'])
-      .map(([iso, v]) => ({'ISO': iso, ...v}));
-    const ws2 = XLSX.utils.json_to_sheet(summaryRows);
-    XLSX.utils.book_append_sheet(wb, ws2, 'ISO Summary');
-    XLSX.writeFile(wb, `1st_Alliance_SPA_${month}.xlsx`);
-
-  } else if (tab === 'monthly') {
-    // Monthly funded — full calculated columns
-    const rows = deals.map(d => ({
-      'Agreement #':      d.agr,
-      'Merchant':         d.merchant,
-      'ISO':              d.iso,
-      'Type':             d.renewal ? 'Renewal' : 'New',
-      'Funded Date':      d.funded,
-      'Funded Amount':    d.amount,
-      'Repayment Amount': d.repayment,
-      'Origination Fee':  d.origFee,
-      'Commission Fee':   d.commFee,
-      'Merchant Net':     d.merchantNet,
-      'Deferred Revenue': d.deferredRev,
-      'ACH Amount':       d.achAmt,
-      'Bank Transaction': d.bankTx ?? '',
-      'Variance':         d.variance ?? '',
-      'Status':           d.status,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    formatSheet(ws, rows.length);
-    XLSX.utils.book_append_sheet(wb, ws, 'Monthly Funded');
-
-    // Totals row
-    const totals = {
-      'Agreement #': 'TOTAL', 'Merchant': '', 'ISO': '', 'Type': '',
-      'Funded Date': '', 'Funded Amount': deals.reduce((a,b)=>a+b.amount,0),
-      'Repayment Amount': deals.reduce((a,b)=>a+b.repayment,0),
-      'Origination Fee': deals.reduce((a,b)=>a+b.origFee,0),
-      'Commission Fee': deals.reduce((a,b)=>a+b.commFee,0),
-      'Merchant Net': deals.reduce((a,b)=>a+b.merchantNet,0),
-      'Deferred Revenue': deals.reduce((a,b)=>a+b.deferredRev,0),
-      'ACH Amount': deals.reduce((a,b)=>a+b.achAmt,0),
-      'Bank Transaction': deals.reduce((a,b)=>a+(b.bankTx||0),0),
-      'Variance': deals.reduce((a,b)=>a+(b.variance||0),0),
-      'Status': '',
-    };
-    XLSX.utils.sheet_add_json(ws, [totals], {skipHeader:true, origin:-1});
-    XLSX.writeFile(wb, `1st_Alliance_Monthly_${month}.xlsx`);
-
+  if (tab === 'monthly' || tab === 'overview' || tab === 'alldeals') {
+    exportSPAReport(deals, monthLabel, commSheet, spaSheet);
   } else if (tab === 'commissions') {
-    const rows = deals.map(d => ({
-      'Agreement #':      d.agr,
-      'Merchant':         d.merchant,
-      'ISO':              d.iso,
-      'Type':             d.renewal ? 'Renewal' : 'New',
-      'Funded Date':      d.funded,
-      'Funded Amount':    d.amount,
-      'Origination Fee':  d.origFee,
-      'Commission Fee':   d.commFee,
-      'Total Fees':       d.origFee + d.commFee,
-      'Status':           d.status,
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    formatSheet(ws, rows.length);
-    XLSX.utils.book_append_sheet(wb, ws, 'Commissions');
-
-    // ISO commission summary
-    const isoComm = {};
-    deals.forEach(d => {
-      if (!isoComm[d.iso]) isoComm[d.iso] = {Deals:0,'Funded Amount':0,'Orig. Fee':0,'Comm. Fee':0,'Total Fees':0};
-      isoComm[d.iso].Deals++;
-      isoComm[d.iso]['Funded Amount'] += d.amount;
-      isoComm[d.iso]['Orig. Fee'] += d.origFee;
-      isoComm[d.iso]['Comm. Fee'] += d.commFee;
-      isoComm[d.iso]['Total Fees'] += d.origFee + d.commFee;
-    });
-    const ws2 = XLSX.utils.json_to_sheet(
-      Object.entries(isoComm).sort((a,b)=>b[1]['Total Fees']-a[1]['Total Fees']).map(([iso,v])=>({ISO:iso,...v}))
-    );
-    XLSX.utils.book_append_sheet(wb, ws2, 'By ISO');
-    XLSX.writeFile(wb, `1st_Alliance_Commissions_${month}.xlsx`);
+    exportCommissions(deals, monthLabel);
   }
 }
 
-function formatSheet(ws, rowCount) {
-  // Set column widths
-  const cols = [
-    {wch:14},{wch:32},{wch:24},{wch:9},{wch:12},
-    {wch:14},{wch:16},{wch:14},{wch:14},{wch:13},
-    {wch:15},{wch:13},{wch:16},{wch:10},{wch:12},{wch:10},{wch:7}
+function cell(ws, addr, v, t) {
+  // t: 'n'=number, 's'=string, 'f'=formula
+  if (t === 'f') ws[addr] = { t:'n', f: v, z:'#,##0.00' };
+  else if (t === 'n') ws[addr] = { t:'n', v: v, z:'#,##0.00' };
+  else ws[addr] = { t:'s', v: String(v||'') };
+}
+
+function colLetter(n) {
+  // 1=A, 26=Z, 27=AA …
+  let s = '';
+  while (n > 0) { n--; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+  return s;
+}
+
+function exportSPAReport(deals, monthLabel, commSheet, spaSheet) {
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: SPA REPORT (raw data, hardcodes only) ──────────────────────
+  const ws1 = {};
+  const rawHdrs = [
+    'Agreement URL','Payment Method','Status','Contact ID',
+    'Opportunity: Funded Date','Opportunity: Opportunity Name',
+    'Agreement Amount','Sell Rate','Number of Payments',
+    'Opportunity: Payment Frequency','Current Balance','Pending Balance',
+    'Status Detail','Paid in %','Opportunity: Holdback %',
+    'Payer: Shipping State/Province','Opportunity: Position #',
+    'Referral Source: Account Name','Referral Source Contact: Full Name',
+    'Opportunity: Stage','ACH Processor - Funding','Repayment Amount'
   ];
-  ws['!cols'] = cols;
+  rawHdrs.forEach((h,i) => { ws1[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
+  deals.forEach((d,ri) => {
+    const r = ri + 2;
+    const vals = [
+      d.agr, 'ACH', d.status||'Active', d.contactId||'',
+      d.funded, d.merchant, d.amount, d.factor||'',
+      d.payments||'', d.freq, d.balance||'', d.pendingBal||'',
+      d.status, d.paidPct||'', d.holdback||'',
+      d.state, d.position||'', d.iso, d.isoContact||'',
+      d.stage||'Funded', d.achProc||'', d.repayment
+    ];
+    vals.forEach((v,ci) => {
+      const addr = colLetter(ci+1)+r;
+      if (typeof v === 'number') ws1[addr] = {t:'n',v,z:'#,##0.00'};
+      else ws1[addr] = {t:'s',v:String(v||'')};
+    });
+  });
+  ws1['!ref'] = `A1:${colLetter(rawHdrs.length)}${deals.length+1}`;
+  ws1['!cols'] = [
+    {wch:16},{wch:14},{wch:10},{wch:12},{wch:18},{wch:42},{wch:14},{wch:8},
+    {wch:10},{wch:10},{wch:14},{wch:14},{wch:14},{wch:10},{wch:12},{wch:8},
+    {wch:8},{wch:28},{wch:22},{wch:12},{wch:18},{wch:14}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws1, 'SPA REPORT');
+
+  // ── Sheet 2: Monthly SPA — exact column order + live formulas ────────────
+  const ws2 = {};
+  // Row 1: small label hints above formula columns (matching your file)
+  ws2['J1'] = {t:'s', v:'Origination Fee'};
+  ws2['K1'] = {t:'s', v:'AR'};
+  ws2['L1'] = {t:'s', v:'Deferred Revenue'};
+
+  // Row 2: column headers — exact names from your file
+  const spaHdrs = [
+    'Agreement URL','Payment Method','Status','Contact ID',
+    'Opportunity: Funded Date','Opportunity: Opportunity Name',
+    'Agreement Amount','Merchant Net','Commission Fee','Origination Fee',
+    'Repayment Amount','Deferred Revenue','ACH/Wire Amount',
+    'Bank Transaction','Variance','Sell Rate','Number of Payments',
+    'Opportunity: Payment Frequency','Current Balance','Pending Balance',
+    'Status Detail','Paid in %','Opportunity: Holdback %',
+    'Payer: Shipping State/Province','Opportunity: Position #',
+    'Referral Source: Account Name','Referral Source Contact: Full Name',
+    'Opportunity: Stage','ACH Processor - Funding'
+  ];
+  spaHdrs.forEach((h,i) => { ws2[colLetter(i+1)+'2'] = {t:'s',v:h,s:{font:{bold:true}}}; });
+
+  // Data rows start at row 3
+  deals.forEach((d,ri) => {
+    const r = ri + 3;
+    // A: Agreement URL
+    ws2[`A${r}`] = {t:'s', v: d.agr};
+    // B: Payment Method
+    ws2[`B${r}`] = {t:'s', v: 'ACH'};
+    // C: Status
+    ws2[`C${r}`] = {t:'s', v: d.status||'Active'};
+    // D: Contact ID
+    ws2[`D${r}`] = {t:'s', v: d.contactId||''};
+    // E: Funded Date
+    ws2[`E${r}`] = {t:'s', v: d.funded};
+    // F: Opportunity Name
+    ws2[`F${r}`] = {t:'s', v: d.merchant};
+    // G: Agreement Amount — hardcode from SF
+    ws2[`G${r}`] = {t:'n', v: d.amount, z:'#,##0.00'};
+    // H: Merchant Net = G - J  ← formula
+    ws2[`H${r}`] = {t:'n', f:`G${r}-J${r}`, z:'#,##0.00'};
+    // I: Commission Fee = SUMIFS from Commission sheet ← cross-sheet formula
+    ws2[`I${r}`] = {t:'n', f:`SUMIFS(${commSheet}!O:O,${commSheet}!E:E,${spaSheet}!F${r})`, z:'#,##0.00'};
+    // J: Origination Fee = SUMIFS from Commission sheet ← cross-sheet formula
+    ws2[`J${r}`] = {t:'n', f:`SUMIFS(${commSheet}!M:M,${commSheet}!E:E,${spaSheet}!F${r})`, z:'#,##0.00'};
+    // K: Repayment Amount — hardcode from SF
+    ws2[`K${r}`] = {t:'n', v: d.repayment, z:'#,##0.00'};
+    // L: Deferred Revenue = K - G ← formula
+    ws2[`L${r}`] = {t:'n', f:`K${r}-G${r}`, z:'#,##0.00'};
+    // M: ACH/Wire Amount = K - J - L ← formula
+    ws2[`M${r}`] = {t:'n', f:`K${r}-J${r}-L${r}`, z:'#,##0.00'};
+    // N: Bank Transaction — hardcode (manual for renewals)
+    const bankVal = d.bankTx !== null ? d.bankTx : '';
+    if (bankVal !== '') ws2[`N${r}`] = {t:'n', v: bankVal, z:'#,##0.00'};
+    else ws2[`N${r}`] = {t:'s', v:''};
+    // O: Variance = M - N ← formula
+    ws2[`O${r}`] = {t:'n', f:`M${r}-N${r}`, z:'#,##0.00'};
+    // P: Sell Rate
+    ws2[`P${r}`] = {t:'n', v: d.factor||1.49, z:'0.00'};
+    // Q: Number of Payments
+    ws2[`Q${r}`] = {t:'n', v: d.payments||0, z:'#,##0'};
+    // R: Frequency
+    ws2[`R${r}`] = {t:'s', v: d.freq||''};
+    // S: Current Balance
+    ws2[`S${r}`] = {t:'n', v: d.balance||0, z:'#,##0.00'};
+    // T: Pending Balance
+    ws2[`T${r}`] = {t:'n', v: d.pendingBal||0, z:'#,##0.00'};
+    // U: Status Detail
+    ws2[`U${r}`] = {t:'s', v: d.status||'Performing'};
+    // V: Paid in %
+    ws2[`V${r}`] = {t:'n', v: d.paidPct||0, z:'0.00%'};
+    // W: Holdback %
+    ws2[`W${r}`] = {t:'n', v: d.holdback||0, z:'0.00%'};
+    // X: State
+    ws2[`X${r}`] = {t:'s', v: d.state||''};
+    // Y: Position
+    ws2[`Y${r}`] = {t:'n', v: d.position||1};
+    // Z: ISO
+    ws2[`Z${r}`] = {t:'s', v: d.iso||''};
+    // AA: ISO Contact
+    ws2[`AA${r}`] = {t:'s', v: d.isoContact||''};
+    // AB: Stage
+    ws2[`AB${r}`] = {t:'s', v: d.stage||'Funded'};
+    // AC: ACH Processor
+    ws2[`AC${r}`] = {t:'s', v: d.achProc||''};
+  });
+
+  // Totals row
+  const lastData = deals.length + 2;
+  const totalRow = lastData + 1;
+  ws2[`A${totalRow}`] = {t:'s', v:'TOTAL', s:{font:{bold:true}}};
+  ['G','H','I','J','K','L','M','N','O'].forEach(col => {
+    ws2[`${col}${totalRow}`] = {t:'n', f:`SUM(${col}3:${col}${lastData})`, z:'#,##0.00', s:{font:{bold:true}}};
+  });
+
+  ws2['!ref'] = `A1:AC${totalRow}`;
+  ws2['!cols'] = [
+    {wch:16},{wch:14},{wch:10},{wch:12},{wch:16},{wch:42},{wch:14},
+    {wch:14},{wch:14},{wch:14},{wch:16},{wch:16},{wch:16},{wch:16},{wch:12},
+    {wch:10},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:10},{wch:12},
+    {wch:8},{wch:8},{wch:28},{wch:22},{wch:12},{wch:18}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws2, `${monthLabel} SPA`);
+
+  // ── Sheet 3: Commission placeholder ─────────────────────────────────────
+  const ws3 = {};
+  const commHdrs = [
+    'Agreement URL','Payment Method','Status','Contact ID',
+    'Opportunity: Opportunity Name','ISO Commission','Commission %',
+    'ISO Override','ISO Override %','Sales Override','Sales Override %',
+    'Total Commission %','Fee Amount','Commission Payment','Total Commission',
+    'Clawback','Net Commission','Date Paid'
+  ];
+  commHdrs.forEach((h,i) => { ws3[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
+  ws3['A2'] = {t:'s', v:'← Paste your Commission CSV export here. Col M = Fee Amount, Col O = Commission Payment.'};
+  ws3['!ref'] = `A1:${colLetter(commHdrs.length)}2`;
+  ws3['!cols'] = commHdrs.map((_,i) => ({wch: i===4?42:i===0?16:14}));
+  XLSX.utils.book_append_sheet(wb, ws3, `${monthLabel} Commission`);
+
+  // ── ISO Summary sheet ────────────────────────────────────────────────────
+  const ws4 = {};
+  const isoHdrs = ['ISO','Deals','Funded Amount','Origination Fee','Commission Fee','Total Fees'];
+  isoHdrs.forEach((h,i) => { ws4[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
+  const isoMap = {};
+  deals.forEach(d => {
+    if (!isoMap[d.iso]) isoMap[d.iso] = {deals:0,amt:0,orig:0,comm:0};
+    isoMap[d.iso].deals++; isoMap[d.iso].amt+=d.amount;
+    isoMap[d.iso].orig+=d.origFee; isoMap[d.iso].comm+=d.commFee;
+  });
+  Object.entries(isoMap).sort((a,b)=>b[1].amt-a[1].amt).forEach(([iso,v],ri) => {
+    const r = ri+2;
+    ws4[`A${r}`]={t:'s',v:iso};
+    ws4[`B${r}`]={t:'n',v:v.deals};
+    ws4[`C${r}`]={t:'n',v:v.amt,z:'#,##0.00'};
+    ws4[`D${r}`]={t:'n',v:v.orig,z:'#,##0.00'};
+    ws4[`E${r}`]={t:'n',v:v.comm,z:'#,##0.00'};
+    ws4[`F${r}`]={t:'n',f:`D${r}+E${r}`,z:'#,##0.00'};
+  });
+  const isoCount = Object.keys(isoMap).length;
+  ws4['!ref'] = `A1:F${isoCount+1}`;
+  ws4['!cols'] = [{wch:28},{wch:8},{wch:14},{wch:14},{wch:14},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws4, 'ISO Summary');
+
+  const fname = `1st_Alliance_SPA_${monthLabel.replace('.','_')}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+
+function exportCommissions(deals, monthLabel) {
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  const hdrs = [
+    'Agreement URL','Merchant','ISO','Type','Funded Date',
+    'Funded Amount','Origination Fee','Commission Fee','Total Fees','Status'
+  ];
+  hdrs.forEach((h,i) => { ws[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
+  deals.forEach((d,ri) => {
+    const r = ri+2;
+    ws[`A${r}`]={t:'s',v:d.agr};
+    ws[`B${r}`]={t:'s',v:d.merchant};
+    ws[`C${r}`]={t:'s',v:d.iso};
+    ws[`D${r}`]={t:'s',v:d.renewal?'Renewal':'New'};
+    ws[`E${r}`]={t:'s',v:d.funded};
+    ws[`F${r}`]={t:'n',v:d.amount,z:'#,##0.00'};
+    ws[`G${r}`]={t:'n',v:d.origFee,z:'#,##0.00'};
+    ws[`H${r}`]={t:'n',v:d.commFee,z:'#,##0.00'};
+    ws[`I${r}`]={t:'n',f:`G${r}+H${r}`,z:'#,##0.00'};
+    ws[`J${r}`]={t:'s',v:d.status};
+  });
+  const last = deals.length+1;
+  const tr = last+1;
+  ws[`A${tr}`]={t:'s',v:'TOTAL',s:{font:{bold:true}}};
+  ['F','G','H','I'].forEach(c => {
+    ws[`${c}${tr}`]={t:'n',f:`SUM(${c}2:${c}${last})`,z:'#,##0.00',s:{font:{bold:true}}};
+  });
+  ws['!ref']=`A1:J${tr}`;
+  ws['!cols']=[{wch:16},{wch:36},{wch:28},{wch:9},{wch:12},{wch:14},{wch:14},{wch:14},{wch:12},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Commissions');
+
+  // By ISO
+  const ws2 = {};
+  const isoHdrs2 = ['ISO','Deals','Funded Amount','Orig. Fee','Comm. Fee','Total Fees'];
+  isoHdrs2.forEach((h,i) => { ws2[colLetter(i+1)+'1']={t:'s',v:h,s:{font:{bold:true}}}; });
+  const isoMap2 = {};
+  deals.forEach(d => {
+    if(!isoMap2[d.iso]) isoMap2[d.iso]={deals:0,amt:0,orig:0,comm:0};
+    isoMap2[d.iso].deals++; isoMap2[d.iso].amt+=d.amount;
+    isoMap2[d.iso].orig+=d.origFee; isoMap2[d.iso].comm+=d.commFee;
+  });
+  Object.entries(isoMap2).sort((a,b)=>b[1].comm-a[1].comm).forEach(([iso,v],ri)=>{
+    const r=ri+2;
+    ws2[`A${r}`]={t:'s',v:iso};
+    ws2[`B${r}`]={t:'n',v:v.deals};
+    ws2[`C${r}`]={t:'n',v:v.amt,z:'#,##0.00'};
+    ws2[`D${r}`]={t:'n',v:v.orig,z:'#,##0.00'};
+    ws2[`E${r}`]={t:'n',v:v.comm,z:'#,##0.00'};
+    ws2[`F${r}`]={t:'n',f:`D${r}+E${r}`,z:'#,##0.00'};
+  });
+  ws2['!ref']=`A1:F${Object.keys(isoMap2).length+1}`;
+  ws2['!cols']=[{wch:28},{wch:8},{wch:14},{wch:12},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'By ISO');
+
+  XLSX.writeFile(wb, `1st_Alliance_Commissions_${monthLabel.replace('.','_')}.xlsx`);
 }
 
 
