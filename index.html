@@ -7,6 +7,7 @@
 <title>1st Alliance · SPA Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -157,7 +158,10 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
         <div class="page-title">Portfolio overview</div>
         <div class="page-sub" id="ov-sub">Sample data · Upload CSVs to refresh</div>
       </div>
-      <button class="btn btn-primary" onclick="showPanel('upload',document.querySelectorAll('.nav-item')[4])">↑ Upload new data</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="exportExcel('overview')">⬇ Export Excel</button>
+        <button class="btn btn-primary" onclick="showPanel('upload',document.querySelectorAll('.nav-item')[4])">↑ Upload new data</button>
+      </div>
     </div>
     <div class="kpi-grid" id="ov-kpis"></div>
     <div class="card-grid">
@@ -185,7 +189,10 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
         <div class="page-title">Monthly funded deals</div>
         <div class="page-sub" id="mo-sub">All calculated columns</div>
       </div>
-      <input type="text" placeholder="Search merchant..." id="mo-search" oninput="filterMonthly()" style="width:180px">
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="exportExcel('monthly')">⬇ Export Excel</button>
+        <input type="text" placeholder="Search merchant..." id="mo-search" oninput="filterMonthly()" style="width:180px">
+      </div>
     </div>
     <div id="renewal-alert" class="alert alert-warn" style="display:none">
       ⚠️ <span id="renewal-count"></span> renewal deals need Bank Transaction amounts entered manually. Enter them in the table below — Variance calculates automatically.
@@ -199,9 +206,12 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
 
   <!-- COMMISSIONS -->
   <div id="commissions" class="panel">
-    <div class="page-header">
-      <div class="page-title">Commissions</div>
-      <div class="page-sub" id="cm-sub">Commission tab data</div>
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">Commissions</div>
+        <div class="page-sub" id="cm-sub">Commission tab data</div>
+      </div>
+      <button class="btn" onclick="exportExcel('commissions')">⬇ Export Excel</button>
     </div>
     <div class="kpi-grid" id="cm-kpis"></div>
     <div class="card-grid">
@@ -223,9 +233,12 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
 
   <!-- ALL DEALS -->
   <div id="alldeals" class="panel">
-    <div class="page-header">
-      <div class="page-title">All active deals</div>
-      <div class="page-sub">Full portfolio from Salesforce export</div>
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">All active deals</div>
+        <div class="page-sub">Full portfolio from Salesforce export</div>
+      </div>
+      <button class="btn" onclick="exportExcel('alldeals')">⬇ Export Excel</button>
     </div>
     <div class="controls">
       <input type="text" placeholder="Search merchant or AGR#..." id="all-search" oninput="filterAll()" style="width:220px">
@@ -706,7 +719,139 @@ function processData() {
   alert(`✓ Done! ${processedDeals.length} deals processed. Renewal deals are highlighted in the Monthly Funded tab — enter their Bank Transaction amounts there.`);
 }
 
-// ── Init ──────────────────────────────────────────────────────────────────────
+// ── Excel Export ──────────────────────────────────────────────────────────────
+function exportExcel(tab) {
+  const deals = processedDeals.length ? processedDeals : SAMPLE_DEALS.map(calcDeal);
+  const month = (deals[0]?.funded || 'report').substring(0,7);
+  const wb = XLSX.utils.book_new();
+
+  if (tab === 'overview' || tab === 'alldeals') {
+    // All deals — full columns
+    const rows = deals.map(d => ({
+      'Agreement #':    d.agr,
+      'Merchant':       d.merchant,
+      'ISO':            d.iso,
+      'Type':           d.renewal ? 'Renewal' : 'New',
+      'Funded Date':    d.funded,
+      'Funded Amount':  d.amount,
+      'Repayment Amount': d.repayment,
+      'Origination Fee':  d.origFee,
+      'Commission Fee':   d.commFee,
+      'Merchant Net':     d.merchantNet,
+      'Deferred Revenue': d.deferredRev,
+      'ACH Amount':       d.achAmt,
+      'Bank Transaction': d.bankTx ?? '',
+      'Variance':         d.variance ?? '',
+      'Status':           d.status,
+      'Frequency':        d.freq,
+      'State':            d.state,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    formatSheet(ws, rows.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'All Deals');
+
+    // Summary sheet
+    const isoTotals = {};
+    deals.forEach(d => {
+      if (!isoTotals[d.iso]) isoTotals[d.iso] = {Deals:0, 'Funded Amount':0, 'Commission Fee':0, 'Origination Fee':0};
+      isoTotals[d.iso].Deals++;
+      isoTotals[d.iso]['Funded Amount'] += d.amount;
+      isoTotals[d.iso]['Commission Fee'] += d.commFee;
+      isoTotals[d.iso]['Origination Fee'] += d.origFee;
+    });
+    const summaryRows = Object.entries(isoTotals)
+      .sort((a,b) => b[1]['Funded Amount'] - a[1]['Funded Amount'])
+      .map(([iso, v]) => ({'ISO': iso, ...v}));
+    const ws2 = XLSX.utils.json_to_sheet(summaryRows);
+    XLSX.utils.book_append_sheet(wb, ws2, 'ISO Summary');
+    XLSX.writeFile(wb, `1st_Alliance_SPA_${month}.xlsx`);
+
+  } else if (tab === 'monthly') {
+    // Monthly funded — full calculated columns
+    const rows = deals.map(d => ({
+      'Agreement #':      d.agr,
+      'Merchant':         d.merchant,
+      'ISO':              d.iso,
+      'Type':             d.renewal ? 'Renewal' : 'New',
+      'Funded Date':      d.funded,
+      'Funded Amount':    d.amount,
+      'Repayment Amount': d.repayment,
+      'Origination Fee':  d.origFee,
+      'Commission Fee':   d.commFee,
+      'Merchant Net':     d.merchantNet,
+      'Deferred Revenue': d.deferredRev,
+      'ACH Amount':       d.achAmt,
+      'Bank Transaction': d.bankTx ?? '',
+      'Variance':         d.variance ?? '',
+      'Status':           d.status,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    formatSheet(ws, rows.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'Monthly Funded');
+
+    // Totals row
+    const totals = {
+      'Agreement #': 'TOTAL', 'Merchant': '', 'ISO': '', 'Type': '',
+      'Funded Date': '', 'Funded Amount': deals.reduce((a,b)=>a+b.amount,0),
+      'Repayment Amount': deals.reduce((a,b)=>a+b.repayment,0),
+      'Origination Fee': deals.reduce((a,b)=>a+b.origFee,0),
+      'Commission Fee': deals.reduce((a,b)=>a+b.commFee,0),
+      'Merchant Net': deals.reduce((a,b)=>a+b.merchantNet,0),
+      'Deferred Revenue': deals.reduce((a,b)=>a+b.deferredRev,0),
+      'ACH Amount': deals.reduce((a,b)=>a+b.achAmt,0),
+      'Bank Transaction': deals.reduce((a,b)=>a+(b.bankTx||0),0),
+      'Variance': deals.reduce((a,b)=>a+(b.variance||0),0),
+      'Status': '',
+    };
+    XLSX.utils.sheet_add_json(ws, [totals], {skipHeader:true, origin:-1});
+    XLSX.writeFile(wb, `1st_Alliance_Monthly_${month}.xlsx`);
+
+  } else if (tab === 'commissions') {
+    const rows = deals.map(d => ({
+      'Agreement #':      d.agr,
+      'Merchant':         d.merchant,
+      'ISO':              d.iso,
+      'Type':             d.renewal ? 'Renewal' : 'New',
+      'Funded Date':      d.funded,
+      'Funded Amount':    d.amount,
+      'Origination Fee':  d.origFee,
+      'Commission Fee':   d.commFee,
+      'Total Fees':       d.origFee + d.commFee,
+      'Status':           d.status,
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    formatSheet(ws, rows.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'Commissions');
+
+    // ISO commission summary
+    const isoComm = {};
+    deals.forEach(d => {
+      if (!isoComm[d.iso]) isoComm[d.iso] = {Deals:0,'Funded Amount':0,'Orig. Fee':0,'Comm. Fee':0,'Total Fees':0};
+      isoComm[d.iso].Deals++;
+      isoComm[d.iso]['Funded Amount'] += d.amount;
+      isoComm[d.iso]['Orig. Fee'] += d.origFee;
+      isoComm[d.iso]['Comm. Fee'] += d.commFee;
+      isoComm[d.iso]['Total Fees'] += d.origFee + d.commFee;
+    });
+    const ws2 = XLSX.utils.json_to_sheet(
+      Object.entries(isoComm).sort((a,b)=>b[1]['Total Fees']-a[1]['Total Fees']).map(([iso,v])=>({ISO:iso,...v}))
+    );
+    XLSX.utils.book_append_sheet(wb, ws2, 'By ISO');
+    XLSX.writeFile(wb, `1st_Alliance_Commissions_${month}.xlsx`);
+  }
+}
+
+function formatSheet(ws, rowCount) {
+  // Set column widths
+  const cols = [
+    {wch:14},{wch:32},{wch:24},{wch:9},{wch:12},
+    {wch:14},{wch:16},{wch:14},{wch:14},{wch:13},
+    {wch:15},{wch:13},{wch:16},{wch:10},{wch:12},{wch:10},{wch:7}
+  ];
+  ws['!cols'] = cols;
+}
+
+
 buildOverview();
 buildMonthly();
 buildCommissions();
