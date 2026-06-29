@@ -138,6 +138,10 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
       <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>
       All active deals
     </div>
+    <div class="nav-item" onclick="showPanel('achworks',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"/></svg>
+      ACH Works
+    </div>
     <div class="nav-label" style="margin-top:.5rem">Setup</div>
     <div class="nav-item" onclick="showPanel('upload',this)">
       <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
@@ -323,6 +327,95 @@ code{background:var(--surface2);border:1px solid var(--border);border-radius:4px
       <div class="step"><div class="step-num">1</div><div class="step-body"><div class="step-title">SPA Report</div><div class="step-desc">Open the SPA Report in Salesforce → click the export/download button → select CSV format → save to your computer.</div></div></div>
       <div class="step"><div class="step-num">2</div><div class="step-body"><div class="step-title">Commission Report</div><div class="step-desc">Open the Commission Report in Salesforce → export as CSV. Make sure it includes Fee Amount (col M) and Commission Payment (col O).</div></div></div>
       <div class="step"><div class="step-num">3</div><div class="step-body"><div class="step-title">Upload both above</div><div class="step-desc">Drop both files into the upload zones above, then click "Process & build dashboard". All columns calculate automatically.</div></div></div>
+    </div>
+  </div>
+
+  <!-- ACH WORKS -->
+  <div id="achworks" class="panel">
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">ACH Works</div>
+        <div class="page-sub" id="ach-sub">Upload ACH Works CSV + Customer Name CSV to process</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="ach-export-dep" onclick="exportACH('deposit')" style="display:none">⬇ Download Deposit (Saasant)</button>
+        <button class="btn btn-primary" id="ach-export-exp" onclick="exportACH('expense')" style="display:none">⬇ Download Expense (Saasant)</button>
+      </div>
+    </div>
+
+    <div id="ach-missing-alert" class="alert alert-warn" style="display:none">
+      ⚠️ <strong id="ach-missing-count"></strong> customer names not found in QBO list. See the Missing Names section below — add them before downloading.
+    </div>
+
+    <div class="kpi-grid" id="ach-kpis" style="display:none"></div>
+
+    <!-- Upload zone -->
+    <div id="ach-upload-zone">
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">① ACH Works CSV <span id="ach-raw-check" style="color:var(--success)"></span></div>
+          <label class="upload-zone" id="ach-raw-zone"
+            ondragover="this.classList.add('drag');event.preventDefault()"
+            ondragleave="this.classList.remove('drag')"
+            ondrop="handleACHDrop(event,'raw')">
+            <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            <div class="upload-title">Drop ACH Works CSV here</div>
+            <div class="upload-sub">Raw export from ACH Works website</div>
+            <input type="file" accept=".csv" id="ach-raw-upload" onchange="loadACHRaw(event)" style="display:none">
+          </label>
+          <div id="ach-raw-status" style="font-size:12px;color:var(--text3)"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">② QBO Customer Name CSV <span id="ach-cust-check" style="color:var(--success)"></span></div>
+          <label class="upload-zone" id="ach-cust-zone"
+            ondragover="this.classList.add('drag');event.preventDefault()"
+            ondragleave="this.classList.remove('drag')"
+            ondrop="handleACHDrop(event,'cust')">
+            <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            <div class="upload-title">Drop QBO Customer Name CSV here</div>
+            <div class="upload-sub">Monthly export from QuickBooks — customer list</div>
+            <input type="file" accept=".csv" id="ach-cust-upload" onchange="loadACHCust(event)" style="display:none">
+          </label>
+          <div id="ach-cust-status" style="font-size:12px;color:var(--text3)"></div>
+        </div>
+      </div>
+      <div id="ach-process-wrap" style="display:none;margin-bottom:1.25rem">
+        <button class="btn btn-primary" onclick="processACH()">⚡ Process ACH Works</button>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="ach-results" style="display:none">
+      <!-- Missing Names -->
+      <div class="card" id="ach-missing-card" style="display:none">
+        <div class="card-title" style="color:var(--danger)">⚠ Missing Customer Names — add QBO name before downloading</div>
+        <div class="tbl-wrap"><table id="ach-missing-tbl"></table></div>
+      </div>
+
+      <!-- Deposit preview -->
+      <div class="card">
+        <div class="card-title">
+          Deposit tab preview (D rows — Advance Receivable)
+          <span id="dep-count" class="count-chip"></span>
+        </div>
+        <div class="controls">
+          <input type="text" placeholder="Search name..." id="dep-search" oninput="filterDep()" style="width:200px">
+          <select id="dep-date-filter" onchange="filterDep()"><option value="">All dates</option></select>
+        </div>
+        <div class="tbl-wrap"><table id="dep-tbl"></table></div>
+      </div>
+
+      <!-- Expense preview -->
+      <div class="card">
+        <div class="card-title">
+          Expense tab preview (C rows — Syndicator Distributions)
+          <span id="exp-count" class="count-chip"></span>
+        </div>
+        <div class="controls">
+          <input type="text" placeholder="Search payee..." id="exp-search" oninput="filterExp()" style="width:200px">
+        </div>
+        <div class="tbl-wrap"><table id="exp-tbl"></table></div>
+      </div>
     </div>
   </div>
 
@@ -995,6 +1088,235 @@ function exportCommissions(deals, monthLabel) {
 }
 
 
+// ── ACH Works ─────────────────────────────────────────────────────────────────
+let achRawData = null, achCustData = null;
+let achDepRows = [], achExpRows = [], achMissing = [];
+let achDepFiltered = [], achExpFiltered = [];
+
+function loadACHRaw(e) {
+  const file = e.target.files[0]; if (!file) return;
+  Papa.parse(file, {header:true, skipEmptyLines:true, complete(r) {
+    achRawData = r.data;
+    document.getElementById('ach-raw-status').textContent = `✓ ${achRawData.length} rows loaded`;
+    document.getElementById('ach-raw-check').textContent = ' ✓';
+    document.getElementById('ach-raw-zone').classList.add('upload-ok');
+    checkACHReady();
+  }});
+}
+
+function loadACHCust(e) {
+  const file = e.target.files[0]; if (!file) return;
+  Papa.parse(file, {header:true, skipEmptyLines:true, complete(r) {
+    achCustData = r.data;
+    document.getElementById('ach-cust-status').textContent = `✓ ${achCustData.length} customers loaded`;
+    document.getElementById('ach-cust-check').textContent = ' ✓';
+    document.getElementById('ach-cust-zone').classList.add('upload-ok');
+    checkACHReady();
+  }});
+}
+
+function handleACHDrop(e, type) {
+  e.preventDefault();
+  const zone = type==='raw' ? 'ach-raw-zone' : 'ach-cust-zone';
+  document.getElementById(zone).classList.remove('drag');
+  const file = e.dataTransfer.files[0]; if (!file) return;
+  const inp = document.getElementById(type==='raw' ? 'ach-raw-upload' : 'ach-cust-upload');
+  const dt = new DataTransfer(); dt.items.add(file); inp.files = dt.files;
+  type === 'raw' ? loadACHRaw({target:{files:dt.files}}) : loadACHCust({target:{files:dt.files}});
+}
+
+function checkACHReady() {
+  document.getElementById('ach-process-wrap').style.display =
+    (achRawData && achCustData) ? 'block' : 'none';
+}
+
+function processACH() {
+  if (!achRawData || !achCustData) return;
+  const custLookup = {};
+  achCustData.forEach(row => {
+    const keys = Object.keys(row);
+    const spaKey = keys.find(k => /spa.?name|customer.?name|payee|ach.?name/i.test(k)) || keys[0];
+    const qboKey = keys.find(k => /qbo|full.?name|display/i.test(k)) || keys[1];
+    const spaName = String(row[spaKey]||'').trim().toUpperCase();
+    const qboName = String(row[qboKey]||'').trim();
+    if (spaName && qboName && qboName !== '0') custLookup[spaName] = qboName;
+  });
+  const rawKeys = Object.keys(achRawData[0] || {});
+  const findCol = (...patterns) => rawKeys.find(k => patterns.some(p => new RegExp(p,'i').test(k))) || '';
+  const checkCol   = findCol('check','ref.?no');
+  const custCol    = findCol('customer.?name','payee','name');
+  const transCol   = findCol('trans.?type','type');
+  const amtCol     = findCol('^amount$','amount');
+  const settleCol  = findCol('date.?to.?settle','settle.?date','date');
+  const settlIDCol = findCol('settlement.?id','settle.?id');
+  achDepRows = []; achExpRows = []; achMissing = [];
+  const missingSet = new Set();
+  achRawData.forEach(row => {
+    const trans   = String(row[transCol]||'').trim();
+    const rawName = String(row[custCol]||'').trim();
+    const checkNo = String(row[checkCol]||'').trim();
+    const amount  = parseFloat(String(row[amtCol]||'0').replace(/[$,]/g,'')) || 0;
+    const date    = row[settleCol] || '';
+    const settlID = String(row[settlIDCol]||'').trim();
+    if (trans === 'D') {
+      let qboName = custLookup[rawName.toUpperCase()];
+      if (!qboName) {
+        const key18 = rawName.toUpperCase().substring(0,18);
+        for (const [k,v] of Object.entries(custLookup)) {
+          if (k.startsWith(key18) || key18.startsWith(k.substring(0,18))) { qboName=v; break; }
+        }
+      }
+      const missing = !qboName;
+      if (missing && !missingSet.has(rawName)) { missingSet.add(rawName); achMissing.push({achName:rawName,qboName:''}); }
+      achDepRows.push({depositNo:checkNo,date,depositTo:'ACHWorks',
+        receivedFrom:qboName||`⚠ NOT FOUND: ${rawName}`,
+        lineAccount:'Advance Receivable',lineDesc:qboName||`⚠ NOT FOUND: ${rawName}`,
+        amount,missing,rawName});
+    } else if (trans === 'C') {
+      achExpRows.push({refNo:checkNo,account:'ACHWorks',payee:rawName,date,amount,
+        description:settlID,expenseAccount:'Syndicator:Syndicator Distributions'});
+    }
+  });
+  achDepFiltered=[...achDepRows]; achExpFiltered=[...achExpRows];
+  const dates=[...new Set(achDepRows.map(r=>r.date).filter(Boolean))].sort();
+  const sel=document.getElementById('dep-date-filter');
+  sel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}">${d}</option>`).join('');
+  const totDep=achDepRows.reduce((a,b)=>a+b.amount,0);
+  const totExp=achExpRows.reduce((a,b)=>a+b.amount,0);
+  const fmtM=v=>'$'+Math.round(v).toLocaleString();
+  document.getElementById('ach-kpis').style.display='grid';
+  document.getElementById('ach-kpis').innerHTML=[
+    {l:'Deposit rows (D)',v:achDepRows.length,s:'Advance receivable'},
+    {l:'Total deposits',v:fmtM(totDep),s:'ACH amount in'},
+    {l:'Expense rows (C)',v:achExpRows.length,s:'Syndicator distributions'},
+    {l:'Total expenses',v:fmtM(totExp),s:'ACH amount out'},
+    {l:'Missing names',v:achMissing.length,s:achMissing.length?'⚠ Need QBO match':'✓ All matched'},
+  ].map(k=>`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val" style="color:${k.l==='Missing names'&&k.v>0?'var(--danger)':'var(--text)'}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  if (achMissing.length) {
+    document.getElementById('ach-missing-alert').style.display='flex';
+    document.getElementById('ach-missing-count').textContent=achMissing.length+' customer name(s)';
+    document.getElementById('ach-missing-card').style.display='block';
+    document.getElementById('ach-missing-tbl').innerHTML=
+      `<thead><tr><th>ACH Works Name</th><th>QBO Name (enter here)</th><th>Rows affected</th></tr></thead><tbody>`+
+      achMissing.map(m=>{
+        const cnt=achDepRows.filter(r=>r.rawName===m.achName).length;
+        return `<tr style="background:var(--danger-bg)">
+          <td style="color:var(--danger);font-weight:500">${m.achName}</td>
+          <td><input class="editable-input" style="width:280px" placeholder="Enter full QBO customer name..."
+            onchange="updateACHName('${m.achName}',this.value)"></td>
+          <td style="color:var(--text3)">${cnt} rows</td></tr>`;
+      }).join('')+'</tbody>';
+  } else {
+    document.getElementById('ach-missing-alert').style.display='none';
+    document.getElementById('ach-missing-card').style.display='none';
+  }
+  renderDepTable(achDepFiltered);
+  renderExpTable(achExpFiltered);
+  document.getElementById('ach-results').style.display='block';
+  document.getElementById('ach-export-dep').style.display='inline-flex';
+  document.getElementById('ach-export-exp').style.display='inline-flex';
+  document.getElementById('ach-sub').textContent=
+    `${achDepRows.length} deposits · ${achExpRows.length} expenses · ${achMissing.length} missing names`;
+}
+
+function updateACHName(achName, qboName) {
+  achDepRows.forEach(r => {
+    if (r.rawName===achName) { r.receivedFrom=qboName; r.lineDesc=qboName; r.missing=false; }
+  });
+  achDepFiltered=[...achDepRows]; filterDep();
+  if (!achDepRows.some(r=>r.missing)) {
+    document.getElementById('ach-missing-alert').style.display='none';
+    document.getElementById('ach-missing-card').style.display='none';
+  }
+}
+
+function renderDepTable(data) {
+  document.getElementById('dep-count').textContent=`${data.length} rows`;
+  const tot=data.reduce((a,b)=>a+b.amount,0);
+  document.getElementById('dep-tbl').innerHTML=
+    `<thead><tr><th>Deposit No</th><th>Date</th><th>Deposit To</th><th>Received From</th><th>Line Account</th><th>Line Description</th><th class="td-num">Line Amount</th></tr></thead><tbody>`+
+    data.map(r=>`<tr style="${r.missing?'background:var(--danger-bg)':''}">
+      <td class="td-id">${r.depositNo}</td><td>${r.date}</td><td>${r.depositTo}</td>
+      <td style="color:${r.missing?'var(--danger)':'var(--text)'};font-weight:${r.missing?600:400}">${r.receivedFrom}</td>
+      <td>${r.lineAccount}</td><td style="color:${r.missing?'var(--danger)':'var(--text)'}">${r.lineDesc}</td>
+      <td class="td-num">$${r.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+    </tr>`).join('')+
+    `<tr style="background:var(--surface2);font-weight:600"><td colspan="6">TOTAL</td>
+     <td class="td-num">$${tot.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr></tbody>`;
+}
+
+function renderExpTable(data) {
+  document.getElementById('exp-count').textContent=`${data.length} rows`;
+  const tot=data.reduce((a,b)=>a+b.amount,0);
+  document.getElementById('exp-tbl').innerHTML=
+    `<thead><tr><th>Ref No</th><th>Account</th><th>Payee</th><th>Date</th><th class="td-num">Amount</th><th>Description</th><th>Expense Account</th></tr></thead><tbody>`+
+    data.map(r=>`<tr>
+      <td class="td-id">${r.refNo}</td><td>${r.account}</td><td>${r.payee}</td><td>${r.date}</td>
+      <td class="td-num">$${r.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+      <td>${r.description}</td><td>${r.expenseAccount}</td>
+    </tr>`).join('')+
+    `<tr style="background:var(--surface2);font-weight:600"><td colspan="4">TOTAL</td>
+     <td class="td-num">$${tot.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td colspan="2"></td></tr></tbody>`;
+}
+
+function filterDep() {
+  const q=document.getElementById('dep-search').value.toLowerCase();
+  const date=document.getElementById('dep-date-filter').value;
+  achDepFiltered=achDepRows.filter(r=>{
+    if (date&&r.date!==date) return false;
+    if (q&&!r.receivedFrom.toLowerCase().includes(q)&&!r.depositNo.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  renderDepTable(achDepFiltered);
+}
+
+function filterExp() {
+  const q=document.getElementById('exp-search').value.toLowerCase();
+  achExpFiltered=achExpRows.filter(r=>!q||r.payee.toLowerCase().includes(q)||r.refNo.toLowerCase().includes(q));
+  renderExpTable(achExpFiltered);
+}
+
+function exportACH(type) {
+  const wb=XLSX.utils.book_new();
+  const month=(achDepRows[0]?.date||'report').substring(0,7);
+  if (type==='deposit') {
+    const ws={};
+    ['Deposit No','Date','Deposit To Account','Received From','Line Account','Line Description','Line Amount']
+      .forEach((h,i)=>{ws[colLetter(i+1)+'1']={t:'s',v:h};});
+    achDepRows.forEach((r,ri)=>{
+      const row=ri+2;
+      ws[`A${row}`]={t:'s',v:r.depositNo}; ws[`B${row}`]={t:'s',v:r.date};
+      ws[`C${row}`]={t:'s',v:r.depositTo}; ws[`D${row}`]={t:'s',v:r.receivedFrom};
+      ws[`E${row}`]={t:'s',v:r.lineAccount}; ws[`F${row}`]={t:'s',v:r.lineDesc};
+      ws[`G${row}`]={t:'n',v:r.amount,z:'#,##0.00'};
+    });
+    const last=achDepRows.length+1;
+    ws[`A${last+1}`]={t:'s',v:'TOTAL'}; ws[`G${last+1}`]={t:'n',f:`SUM(G2:G${last})`,z:'#,##0.00'};
+    ws['!ref']=`A1:G${last+1}`;
+    ws['!cols']=[{wch:16},{wch:14},{wch:18},{wch:44},{wch:20},{wch:44},{wch:14}];
+    XLSX.utils.book_append_sheet(wb,ws,'Deposit');
+    XLSX.writeFile(wb,`1st_Alliance_Deposit_${month}.xlsx`);
+  } else {
+    const ws={};
+    ['Ref No','Account','Payee','Date','Amount','Description','Expense Account']
+      .forEach((h,i)=>{ws[colLetter(i+1)+'1']={t:'s',v:h};});
+    achExpRows.forEach((r,ri)=>{
+      const row=ri+2;
+      ws[`A${row}`]={t:'s',v:r.refNo}; ws[`B${row}`]={t:'s',v:r.account};
+      ws[`C${row}`]={t:'s',v:r.payee}; ws[`D${row}`]={t:'s',v:r.date};
+      ws[`E${row}`]={t:'n',v:r.amount,z:'#,##0.00'}; ws[`F${row}`]={t:'s',v:r.description};
+      ws[`G${row}`]={t:'s',v:r.expenseAccount};
+    });
+    const last=achExpRows.length+1;
+    ws[`A${last+1}`]={t:'s',v:'TOTAL'}; ws[`E${last+1}`]={t:'n',f:`SUM(E2:E${last})`,z:'#,##0.00'};
+    ws['!ref']=`A1:G${last+1}`;
+    ws['!cols']=[{wch:16},{wch:14},{wch:32},{wch:14},{wch:14},{wch:16},{wch:36}];
+    XLSX.utils.book_append_sheet(wb,ws,'Expense');
+    XLSX.writeFile(wb,`1st_Alliance_Expense_${month}.xlsx`);
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 buildOverview();
 buildMonthly();
 buildCommissions();
