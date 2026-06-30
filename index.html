@@ -1542,10 +1542,12 @@ function exportWorksheetXL() {
   });
   const totalCols = colIdx - 1;
 
-  headerRow.forEach(([ci, val]) => { ws[colLetter(ci)+'1'] = {t:'s', v:val}; });
+  // Row 4 = headers (matching original layout: title in row 1-2, totals row 3, headers row 4, data row 5+)
+  headerRow.forEach(([ci, val]) => { ws[colLetter(ci)+'4'] = {t:'s', v:val}; });
 
+  // Data rows starting at row 5
   wsFiltered.forEach((d, ri) => {
-    const r = ri + 2;
+    const r = ri + 5;
     ws[`A${r}`] = {t:'s', v:d.m};
     ws[`B${r}`] = {t:'s', v:d.f};
     ws[`C${r}`] = {t:'n', v:d.p, z:'#,##0.00'};
@@ -1572,28 +1574,53 @@ function exportWorksheetXL() {
     });
   });
 
-  const lastRow = wsFiltered.length + 1;
+  const firstDataRow = 5;
+  const lastDataRow = wsFiltered.length + 4;
 
-  // Totals row at the bottom (sums for Principal, Def Rev, and each month's Ending/Income/CumUnearned)
-  const tr = lastRow + 1;
-  ws[`A${tr}`] = {t:'s', v:'TOTAL'};
-  ws[`C${tr}`] = {t:'n', f:`SUM(C2:C${lastRow})`, z:'#,##0.00'};
-  ws[`D${tr}`] = {t:'n', f:`SUM(D2:D${lastRow})`, z:'#,##0.00'};
+  // Row 3: "Totals >>>" with values pre-computed (SheetJS needs v= alongside f= to persist cells)
+  // We compute the totals from the data here so they're guaranteed present
+  const sumCol = (col, accessor) => wsFiltered.reduce((a,d) => a + (accessor(d)||0), 0);
+
+  ws['F3'] = {t:'s', v:'Totals >>>'};
+  ws['C3'] = {t:'n', v:sumCol('p', d=>d.p),  f:`SUM(C${firstDataRow}:C${lastDataRow})`, z:'#,##0.00'};
+  ws['D3'] = {t:'n', v:sumCol('dr', d=>d.dr), f:`SUM(D${firstDataRow}:D${lastDataRow})`, z:'#,##0.00'};
+  ws['G3'] = {t:'n', v:sumCol('cp', d=>d.cp), f:`SUM(G${firstDataRow}:G${lastDataRow})`, z:'#,##0.00'};
+  ws['H3'] = {t:'n', v:sumCol('ed', d=>d.ed), f:`SUM(H${firstDataRow}:H${lastDataRow})`, z:'#,##0.00'};
+
   WS_MONTHS.forEach(mo => {
     const dates = WS_MONTH_DATES[mo];
-    let ci = monthColStart[mo] + dates.length; // points at Ending col
-    ws[colLetter(ci)+tr]   = {t:'n', f:`SUM(${colLetter(ci)}2:${colLetter(ci)}${lastRow})`, z:'#,##0.00'};
-    ws[colLetter(ci+2)+tr] = {t:'n', f:`SUM(${colLetter(ci+2)}2:${colLetter(ci+2)}${lastRow})`, z:'#,##0.00'};
-    ws[colLetter(ci+3)+tr] = {t:'n', f:`SUM(${colLetter(ci+3)}2:${colLetter(ci+3)}${lastRow})`, z:'#,##0.00'};
+    let ci = monthColStart[mo];
+    // Sum each daily column
+    dates.forEach(dt => {
+      const cl = colLetter(ci);
+      const total = wsFiltered.reduce((a,d) => a + (-Math.abs(d[mo].daily[dt]||0)), 0);
+      ws[cl+'3'] = {t:'n', v:total, f:`SUM(${cl}${firstDataRow}:${cl}${lastDataRow})`, z:'#,##0.00'};
+      ci++;
+    });
+    // Ending col
+    const endCol = colLetter(ci);
+    const endTot = wsFiltered.reduce((a,d) => a + d[mo].ending, 0);
+    ws[endCol+'3'] = {t:'n', v:endTot, f:`SUM(${endCol}${firstDataRow}:${endCol}${lastDataRow})`, z:'#,##0.00'};
+    // skip % col (ci+1)
+    const incCol = colLetter(ci+2);
+    const incTot = wsFiltered.reduce((a,d) => a + (-Math.abs(d[mo].income)), 0);
+    ws[incCol+'3'] = {t:'n', v:incTot, f:`SUM(${incCol}${firstDataRow}:${incCol}${lastDataRow})`, z:'#,##0.00'};
+    const cumCol = colLetter(ci+3);
+    const cumTot = wsFiltered.reduce((a,d) => a + d[mo].cum_unearned, 0);
+    ws[cumCol+'3'] = {t:'n', v:cumTot, f:`SUM(${cumCol}${firstDataRow}:${cumCol}${lastDataRow})`, z:'#,##0.00'};
   });
+
+  // Title in row 1
+  ws['A1'] = {t:'s', v:'1st Alliance — Income Worksheet'};
+  ws['A2'] = {t:'s', v:`Data through ${WS_MONTH_DATES.may[WS_MONTH_DATES.may.length-1]}`};
 
   const cols = [{wch:38},{wch:12},{wch:13},{wch:13},{wch:20},{wch:10},{wch:15},{wch:14}];
   WS_MONTHS.forEach(mo => {
     WS_MONTH_DATES[mo].forEach(() => cols.push({wch:9}));
-    cols.push({wch:12},{wch:8},{wch:14},{wch:15});
+    cols.push({wch:13},{wch:8},{wch:14},{wch:15});
   });
   ws['!cols'] = cols;
-  ws['!ref'] = `A1:${colLetter(totalCols)}${tr}`;
+  ws['!ref'] = `A1:${colLetter(totalCols)}${lastDataRow}`;
 
   XLSX.utils.book_append_sheet(wb, ws, 'Income Worksheet');
   XLSX.writeFile(wb, '1st_Alliance_Income_Worksheet.xlsx');
