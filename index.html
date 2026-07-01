@@ -557,6 +557,7 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
         <div class="controls">
           <select id="je-month" onchange="renderJournalEntries()" style="width:200px;font-weight:500"></select>
           <button class="btn btn-primary" onclick="exportJournalEntries()">⬇ Export JEs to Excel</button>
+          <button class="btn" onclick="exportSyndicationSupport()">⬇ Export Support Detail (all months)</button>
           <span class="count-chip" id="je-summary"></span>
         </div>
       </div>
@@ -2105,6 +2106,203 @@ function exportJournalEntries() {
 
   XLSX.utils.book_append_sheet(wb, ws, `JEs ${moInfo.label}`);
   XLSX.writeFile(wb, `1st_Alliance_Syndicator_JEs_${moInfo.label.replace(' ','_')}.xlsx`);
+}
+
+function exportSyndicationSupport() {
+  // Mirror of the Syndicator-Summary tab: deals grouped by syndicator, all months side by side,
+  // with subtotals per syndicator and grand total. Layout matches the original Income Worksheet.
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+
+  // Styles
+  const cellBorder = {top:{style:'thin',color:{rgb:'BFBFBF'}},bottom:{style:'thin',color:{rgb:'BFBFBF'}},
+                       left:{style:'thin',color:{rgb:'BFBFBF'}},right:{style:'thin',color:{rgb:'BFBFBF'}}};
+  const sTitle       = {font:{bold:true,sz:14,color:{rgb:'1F4E79'}}};
+  const sSubtitle    = {font:{italic:true,sz:10,color:{rgb:'7F7F7F'}}};
+  const sMonthHdr    = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F4E79'}},
+                        alignment:{horizontal:'center',vertical:'center'},border:cellBorder};
+  const sColHdrFixed = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F4E79'}},
+                        alignment:{horizontal:'center',vertical:'center',wrapText:true},border:cellBorder};
+  const sColHdrMetric= {font:{bold:true,sz:10,color:{rgb:'1F4E79'}},fill:{fgColor:{rgb:'CCDFF2'}},
+                        alignment:{horizontal:'center',vertical:'center',wrapText:true},border:cellBorder};
+  const sSyndBanner  = {font:{bold:true,sz:12,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'2A78D6'}},
+                        alignment:{horizontal:'left',vertical:'center'},border:cellBorder};
+  const sSubtotal    = {font:{bold:true,sz:11,color:{rgb:'1F4E79'}},fill:{fgColor:{rgb:'FFE699'}},
+                        alignment:{horizontal:'right'},border:cellBorder};
+  const sSubtotalLbl = {...sSubtotal, alignment:{horizontal:'left'}};
+  const sGrandTotal  = {font:{bold:true,sz:12,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F4E79'}},
+                        alignment:{horizontal:'right'},border:cellBorder};
+  const sGrandTotalLbl = {...sGrandTotal, alignment:{horizontal:'left'}};
+  const sDataText    = {font:{sz:10},alignment:{horizontal:'left'},border:cellBorder};
+  const sDataMerchant= {font:{sz:10,bold:true,color:{rgb:'1F4E79'}},alignment:{horizontal:'left'},border:cellBorder};
+  const sDataNum     = {font:{sz:10},alignment:{horizontal:'right'},border:cellBorder};
+  const sDataNumMetric = {font:{sz:10},alignment:{horizontal:'right'},fill:{fgColor:{rgb:'F2F7FD'}},border:cellBorder};
+
+  // Layout:
+  // Row 1: Title
+  // Row 2: Subtitle
+  // Row 3: Month group headers (spans 4 cols each per month)
+  // Row 4: Column headers (fixed + per-month 4 metrics)
+  // Row 5+: Data grouped by syndicator with banner + rows + subtotal, then grand total
+  //
+  // Fixed cols (8): Merchant, Funded On, Principal, Def Rev, Commission, Syndicator, Syn %, Deal Count
+  // Then per month (4 cols): Syn Comm | Inc Offset | Mgmt Fee Inc | Syn Inc Earned
+
+  const fixedCols = [
+    {h:'Merchant', w:38},
+    {h:'Funded On', w:12},
+    {h:'Principal', w:13},
+    {h:'Def. Rev.', w:13},
+    {h:'Commission', w:13},
+    {h:'Syndicator Partner', w:26},
+    {h:'Syn %', w:9},
+  ];
+  const nFixed = fixedCols.length;
+  const nMonths = SYND_MONTHS.length;
+  const metricLabels = ['Syn Comm','Inc Offset','Mgmt Fee Inc','Syn Inc Earned'];
+  const totalCols = nFixed + nMonths * 4;
+
+  // Title (row 1) + subtitle (row 2)
+  ws['A1'] = {t:'s', v:'1st Alliance — Syndication Support Detail', s:sTitle};
+  ws['A2'] = {t:'s', v:'Per-deal breakdown supporting the monthly Syndicator Journal Entries', s:sSubtitle};
+
+  // Row 3: Month group headers
+  fixedCols.forEach((_, i) => {
+    ws[colLetter(i+1)+'3'] = {t:'s', v:'', s:sColHdrFixed};
+  });
+  SYND_MONTHS.forEach((m, mi) => {
+    const startCol = nFixed + mi*4 + 1;
+    for (let j=0;j<4;j++) {
+      ws[colLetter(startCol+j)+'3'] = {t:'s', v:j===0?m.label:'', s:sMonthHdr};
+    }
+  });
+
+  // Row 4: column headers
+  fixedCols.forEach((c, i) => {
+    ws[colLetter(i+1)+'4'] = {t:'s', v:c.h, s:sColHdrFixed};
+  });
+  SYND_MONTHS.forEach((m, mi) => {
+    const startCol = nFixed + mi*4 + 1;
+    metricLabels.forEach((lbl, j) => {
+      ws[colLetter(startCol+j)+'4'] = {t:'s', v:lbl, s:sColHdrMetric};
+    });
+  });
+
+  // Data rows — group by syndicator
+  let currentRow = 5;
+  let grand = {}; // {monthKey: {syn_comm,inc_offset,mgmt_fee,inc_earned}}
+  SYND_MONTHS.forEach(m => { grand[m.key] = {syn_comm:0,inc_offset:0,mgmt_fee:0,inc_earned:0}; });
+
+  SYND_SUMMARY.forEach(synd => {
+    // Banner row for this syndicator
+    for (let c=1; c<=totalCols; c++) {
+      ws[colLetter(c)+currentRow] = {t:'s', v: c===1 ? `▸ ${synd.s}  (${synd.n} deals)` : '', s:sSyndBanner};
+    }
+    currentRow++;
+
+    // Filter deals for this syndicator
+    const deals = SYND_DEALS.filter(d => d[5] === synd.s);
+    const subtotal = {};
+    SYND_MONTHS.forEach(m => { subtotal[m.key] = {syn_comm:0,inc_offset:0,mgmt_fee:0,inc_earned:0}; });
+
+    let subP=0, subDR=0, subComm=0;
+
+    deals.forEach(d => {
+      // d = [merchant, funded, principal, def_rev, commission, syndicator, syn_pct, months]
+      ws[`A${currentRow}`] = {t:'s', v:d[0], s:sDataMerchant};
+      ws[`B${currentRow}`] = {t:'s', v:d[1], s:{...sDataText, alignment:{horizontal:'center'}}};
+      ws[`C${currentRow}`] = {t:'n', v:d[2], z:'#,##0.00', s:sDataNum};
+      ws[`D${currentRow}`] = {t:'n', v:d[3], z:'#,##0.00', s:sDataNum};
+      ws[`E${currentRow}`] = {t:'n', v:d[4], z:'#,##0.00', s:sDataNum};
+      ws[`F${currentRow}`] = {t:'s', v:d[5], s:sDataText};
+      ws[`G${currentRow}`] = {t:'n', v:d[6], z:'0.00%', s:{...sDataNum, alignment:{horizontal:'center'}}};
+
+      subP += d[2]; subDR += d[3]; subComm += d[4];
+
+      SYND_MONTHS.forEach((m, mi) => {
+        const startCol = nFixed + mi*4 + 1;
+        const x = d[7][m.key] || {syn_comm:0,inc_offset:0,mgmt_fee:0,inc_earned:0};
+        ws[colLetter(startCol)  +currentRow] = {t:'n', v:x.syn_comm,   z:'#,##0.00;(#,##0.00);"—"', s:sDataNumMetric};
+        ws[colLetter(startCol+1)+currentRow] = {t:'n', v:x.inc_offset, z:'#,##0.00;(#,##0.00);"—"', s:sDataNumMetric};
+        ws[colLetter(startCol+2)+currentRow] = {t:'n', v:x.mgmt_fee,   z:'#,##0.00;(#,##0.00);"—"', s:sDataNumMetric};
+        ws[colLetter(startCol+3)+currentRow] = {t:'n', v:x.inc_earned, z:'#,##0.00;(#,##0.00);"—"', s:sDataNumMetric};
+        subtotal[m.key].syn_comm   += x.syn_comm;
+        subtotal[m.key].inc_offset += x.inc_offset;
+        subtotal[m.key].mgmt_fee   += x.mgmt_fee;
+        subtotal[m.key].inc_earned += x.inc_earned;
+        grand[m.key].syn_comm      += x.syn_comm;
+        grand[m.key].inc_offset    += x.inc_offset;
+        grand[m.key].mgmt_fee      += x.mgmt_fee;
+        grand[m.key].inc_earned    += x.inc_earned;
+      });
+      currentRow++;
+    });
+
+    // Subtotal row for this syndicator
+    ws[`A${currentRow}`] = {t:'s', v:`${synd.s} Subtotal`, s:sSubtotalLbl};
+    ws[`B${currentRow}`] = {t:'s', v:'', s:sSubtotal};
+    ws[`C${currentRow}`] = {t:'n', v:subP,    z:'#,##0.00', s:sSubtotal};
+    ws[`D${currentRow}`] = {t:'n', v:subDR,   z:'#,##0.00', s:sSubtotal};
+    ws[`E${currentRow}`] = {t:'n', v:subComm, z:'#,##0.00', s:sSubtotal};
+    ws[`F${currentRow}`] = {t:'s', v:'', s:sSubtotal};
+    ws[`G${currentRow}`] = {t:'s', v:'', s:sSubtotal};
+    SYND_MONTHS.forEach((m, mi) => {
+      const startCol = nFixed + mi*4 + 1;
+      const st = subtotal[m.key];
+      ws[colLetter(startCol)  +currentRow] = {t:'n', v:st.syn_comm,   z:'#,##0.00;(#,##0.00);"—"', s:sSubtotal};
+      ws[colLetter(startCol+1)+currentRow] = {t:'n', v:st.inc_offset, z:'#,##0.00;(#,##0.00);"—"', s:sSubtotal};
+      ws[colLetter(startCol+2)+currentRow] = {t:'n', v:st.mgmt_fee,   z:'#,##0.00;(#,##0.00);"—"', s:sSubtotal};
+      ws[colLetter(startCol+3)+currentRow] = {t:'n', v:st.inc_earned, z:'#,##0.00;(#,##0.00);"—"', s:sSubtotal};
+    });
+    currentRow++;
+
+    // Blank spacer row
+    currentRow++;
+  });
+
+  // Grand total row
+  const grandP  = SYND_SUMMARY.reduce((a,s) => a + SYND_DEALS.filter(d=>d[5]===s.s).reduce((a2,d)=>a2+d[2],0), 0);
+  const grandDR = SYND_SUMMARY.reduce((a,s) => a + SYND_DEALS.filter(d=>d[5]===s.s).reduce((a2,d)=>a2+d[3],0), 0);
+  const grandC  = SYND_SUMMARY.reduce((a,s) => a + SYND_DEALS.filter(d=>d[5]===s.s).reduce((a2,d)=>a2+d[4],0), 0);
+  ws[`A${currentRow}`] = {t:'s', v:'GRAND TOTAL', s:sGrandTotalLbl};
+  ws[`B${currentRow}`] = {t:'s', v:'', s:sGrandTotal};
+  ws[`C${currentRow}`] = {t:'n', v:grandP,  z:'#,##0.00', s:sGrandTotal};
+  ws[`D${currentRow}`] = {t:'n', v:grandDR, z:'#,##0.00', s:sGrandTotal};
+  ws[`E${currentRow}`] = {t:'n', v:grandC,  z:'#,##0.00', s:sGrandTotal};
+  ws[`F${currentRow}`] = {t:'s', v:'', s:sGrandTotal};
+  ws[`G${currentRow}`] = {t:'s', v:'', s:sGrandTotal};
+  SYND_MONTHS.forEach((m, mi) => {
+    const startCol = nFixed + mi*4 + 1;
+    const g = grand[m.key];
+    ws[colLetter(startCol)  +currentRow] = {t:'n', v:g.syn_comm,   z:'#,##0.00;(#,##0.00);"—"', s:sGrandTotal};
+    ws[colLetter(startCol+1)+currentRow] = {t:'n', v:g.inc_offset, z:'#,##0.00;(#,##0.00);"—"', s:sGrandTotal};
+    ws[colLetter(startCol+2)+currentRow] = {t:'n', v:g.mgmt_fee,   z:'#,##0.00;(#,##0.00);"—"', s:sGrandTotal};
+    ws[colLetter(startCol+3)+currentRow] = {t:'n', v:g.inc_earned, z:'#,##0.00;(#,##0.00);"—"', s:sGrandTotal};
+  });
+
+  // Column widths
+  const cols = fixedCols.map(c => ({wch:c.w}));
+  SYND_MONTHS.forEach(() => { for (let i=0;i<4;i++) cols.push({wch:12}); });
+  ws['!cols'] = cols;
+
+  // Row heights for header rows
+  ws['!rows'] = [{hpx:22},{hpx:16},{hpx:24},{hpx:36}];
+
+  // Merges for title and month group headers
+  const merges = [
+    {s:{r:0,c:0}, e:{r:0,c:totalCols-1}},   // Title
+    {s:{r:1,c:0}, e:{r:1,c:totalCols-1}},   // Subtitle
+  ];
+  SYND_MONTHS.forEach((m, mi) => {
+    const startCol = nFixed + mi*4;
+    merges.push({s:{r:2,c:startCol}, e:{r:2,c:startCol+3}});
+  });
+  ws['!merges'] = merges;
+
+  ws['!ref'] = `A1:${colLetter(totalCols)}${currentRow}`;
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Syndication Support');
+  XLSX.writeFile(wb, '1st_Alliance_Syndication_Support.xlsx');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
