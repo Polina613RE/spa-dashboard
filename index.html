@@ -1417,9 +1417,11 @@ function exportSPAReport(deals, monthLabel, commSheet, spaSheet) {
     'Clawback','Net Commission','Date Paid'
   ];
   commHdrs.forEach((h,i) => { ws3[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
-  // Populate with the actual per-deal Fee Amount (col M) / Total Commission (col O) already
-  // computed for each deal, so the SUMIFS formulas on the SPA sheet resolve to real numbers
-  // instead of coming back blank. (Previously this sheet was left as an empty placeholder.)
+  // Populate each deal. The dashboard knows Fee Amount (orig fee, col M) and Commission Payment
+  // (col N); the remaining money columns are computed with live formulas so the tab foots the
+  // way the May tab does. Columns the dashboard has no source for (ISO Commission split, the
+  // various % columns, Overrides, Date Paid) are left blank for your colleague to paste from the
+  // Salesforce Commission export. Col M and col O stay the SUMIFS targets used by the SPA sheet.
   deals.forEach((d,ri) => {
     const r = ri + 2;
     ws3[`A${r}`] = {t:'s', v: d.agr};
@@ -1427,37 +1429,25 @@ function exportSPAReport(deals, monthLabel, commSheet, spaSheet) {
     ws3[`C${r}`] = {t:'s', v: d.status||'Active'};
     ws3[`D${r}`] = {t:'s', v: d.contactId||''};
     ws3[`E${r}`] = {t:'s', v: d.merchant};
-    ws3[`M${r}`] = {t:'n', v: n(d.origFee), z:'#,##0.00'};
-    ws3[`N${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};
-    ws3[`O${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};
+    // F ISO Commission, H ISO Override, J Sales Override — from Salesforce export, left blank.
+    // G/I/K/L percentage columns — from Salesforce export, left blank.
+    ws3[`M${r}`] = {t:'n', v: n(d.origFee), z:'#,##0.00'};                       // Fee Amount (orig fee)
+    ws3[`N${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};                       // Commission Payment
+    // Total Commission = ISO Commission + ISO Override + Sales Override + Commission Payment.
+    // Those override columns are blank now, so this equals Commission Payment until pasted in.
+    ws3[`O${r}`] = {t:'n', f:`SUM(F${r},H${r},J${r},N${r})`, v:n(d.commFee), z:'#,##0.00'};
+    // P Clawback — blank (manual). Q Net Commission = Total Commission − Clawback.
+    ws3[`Q${r}`] = {t:'n', f:`O${r}-P${r}`, v:n(d.commFee), z:'#,##0.00'};
   });
-  ws3['!ref'] = `A1:${colLetter(commHdrs.length)}${deals.length+1}`;
+  const commLast = deals.length + 1;
+  const commTotalRow = commLast + 1;
+  ws3[`A${commTotalRow}`] = {t:'s', v:'TOTAL', s:{font:{bold:true}}};
+  ['F','H','J','M','N','O','P','Q'].forEach(col => {
+    ws3[`${col}${commTotalRow}`] = {t:'n', f:`SUM(${col}2:${col}${commLast})`, z:'#,##0.00', s:{font:{bold:true}}};
+  });
+  ws3['!ref'] = `A1:${colLetter(commHdrs.length)}${commTotalRow}`;
   ws3['!cols'] = commHdrs.map((_,i) => ({wch: i===4?42:i===0?16:14}));
   XLSX.utils.book_append_sheet(wb, ws3, `${monthLabel} Commission`);
-
-  // ── ISO Summary sheet ────────────────────────────────────────────────────
-  const ws4 = {};
-  const isoHdrs = ['ISO','Deals','Funded Amount','Origination Fee','Commission Fee','Total Fees'];
-  isoHdrs.forEach((h,i) => { ws4[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
-  const isoMap = {};
-  deals.forEach(d => {
-    if (!isoMap[d.iso]) isoMap[d.iso] = {deals:0,amt:0,orig:0,comm:0};
-    isoMap[d.iso].deals++; isoMap[d.iso].amt+=d.amount;
-    isoMap[d.iso].orig+=d.origFee; isoMap[d.iso].comm+=d.commFee;
-  });
-  Object.entries(isoMap).sort((a,b)=>b[1].amt-a[1].amt).forEach(([iso,v],ri) => {
-    const r = ri+2;
-    ws4[`A${r}`]={t:'s',v:iso};
-    ws4[`B${r}`]={t:'n',v:v.deals};
-    ws4[`C${r}`]={t:'n',v:v.amt,z:'#,##0.00'};
-    ws4[`D${r}`]={t:'n',v:v.orig,z:'#,##0.00'};
-    ws4[`E${r}`]={t:'n',v:v.comm,z:'#,##0.00'};
-    ws4[`F${r}`]={t:'n',f:`D${r}+E${r}`,z:'#,##0.00'};
-  });
-  const isoCount = Object.keys(isoMap).length;
-  ws4['!ref'] = `A1:F${isoCount+1}`;
-  ws4['!cols'] = [{wch:28},{wch:8},{wch:14},{wch:14},{wch:14},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws4, 'ISO Summary');
 
   const fname = `1st_Alliance_SPA_${monthLabel.replace('.','_')}.xlsx`;
   XLSX.writeFile(wb, fname);
