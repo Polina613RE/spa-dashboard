@@ -421,6 +421,7 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn" id="ach-export-dep" onclick="exportACH('deposit')" style="display:none">⬇ Download Deposit (Saasant)</button>
+        <button class="btn" id="ach-export-synd" onclick="exportACH('synddep')" style="display:none">⬇ Download Syndicator Deposits</button>
         <button class="btn btn-primary" id="ach-export-exp" onclick="exportACH('expense')" style="display:none">⬇ Download Expense (Saasant)</button>
       </div>
     </div>
@@ -430,6 +431,19 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
     </div>
 
     <div class="kpi-grid" id="ach-kpis" style="display:none"></div>
+
+    <!-- Name Aliases (memorized matches, saved permanently in this browser) -->
+    <div class="card">
+      <div class="card-title">Saved Name Aliases (memorized matches) <span class="count-chip" id="alias-count"></span></div>
+      <div class="page-sub" style="margin-bottom:.75rem">Names you match once are remembered here permanently — future ACH Works uploads resolve them automatically. Use this to fix a signer name (e.g. "Juan Mendoza" → the correct deal), or to update which deal number is active after a refinance. Mark a name as <strong>Vendor</strong> if it's a syndicator sending capital in via ACH, not a merchant customer — those get split into the Syndicator Deposits section below instead of Advance Receivable.</div>
+      <div class="controls" style="margin-bottom:.75rem;flex-wrap:wrap">
+        <input type="text" placeholder="ACH Works name (e.g. Juan Mendoza)" id="alias-new-raw" style="width:220px">
+        <input type="text" placeholder="QBO name (e.g. LIFETIME FOUNDATION REPAIR +2)" id="alias-new-qbo" style="width:260px">
+        <select id="alias-new-type"><option value="customer">Customer (merchant deposit)</option><option value="vendor">Vendor (syndicator)</option></select>
+        <button class="btn btn-primary" onclick="addACHAlias()">+ Add / update alias</button>
+      </div>
+      <div class="tbl-wrap"><table id="alias-tbl"></table></div>
+    </div>
 
     <!-- Upload zone -->
     <div id="ach-upload-zone">
@@ -485,6 +499,16 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
           <select id="dep-date-filter" onchange="filterDep()"><option value="">All dates</option></select>
         </div>
         <div class="tbl-wrap"><table id="dep-tbl"></table></div>
+      </div>
+
+      <!-- Syndicator deposits preview (D rows that are actually syndicator capital, not merchant payments) -->
+      <div class="card">
+        <div class="card-title">
+          Syndicator deposits (D rows recognized as syndicator capital, not merchant payments)
+          <span id="synddep-count" class="count-chip"></span>
+        </div>
+        <div class="page-sub" style="margin-bottom:.5rem">Money coming in via ACH Works from a known syndicator (matched against Saved Name Aliases marked "Vendor", or against your Syndication tab's syndicator list) gets pulled out here instead of mixing into Advance Receivable above.</div>
+        <div class="tbl-wrap"><table id="synddep-tbl"></table></div>
       </div>
 
       <!-- Expense preview -->
@@ -1484,9 +1508,59 @@ function exportCommissions(deals, monthLabel) {
 }
 
 
+// ── Saved Name Aliases (persistent, memorized across sessions) ────────────────
+const ACH_ALIAS_KEY = 'achNameAliases_v1';
+function loadACHAliases() {
+  try { return JSON.parse(localStorage.getItem(ACH_ALIAS_KEY) || '{}'); } catch(e) { return {}; }
+}
+function saveACHAliasesToStorage() {
+  try { localStorage.setItem(ACH_ALIAS_KEY, JSON.stringify(achAliases)); } catch(e) {}
+}
+let achAliases = loadACHAliases(); // { 'JUAN MENDOZA': {qboName:'LIFETIME FOUNDATION REPAIR +2', type:'customer'} }
+
+function renderAliasTable() {
+  const keys = Object.keys(achAliases).sort();
+  document.getElementById('alias-count').textContent = keys.length + ' saved';
+  const head = '<thead><tr><th>ACH Works name</th><th>QBO name</th><th>Type</th><th></th></tr></thead>';
+  const body = keys.map(k => {
+    const a = achAliases[k];
+    return `<tr><td>${k}</td><td>${a.qboName}</td><td>${a.type === 'vendor' ? 'Vendor (syndicator)' : 'Customer'}</td>
+      <td><button class="btn" style="padding:2px 8px;font-size:11px" onclick="removeACHAlias('${k.replace(/'/g,"\\'")}')">Remove</button></td></tr>`;
+  }).join('');
+  document.getElementById('alias-tbl').innerHTML = head + `<tbody>${body || '<tr><td colspan="4" style="color:var(--text3)">No aliases saved yet.</td></tr>'}</tbody>`;
+}
+
+function addACHAlias() {
+  const raw = document.getElementById('alias-new-raw').value.trim().toUpperCase();
+  const qbo = document.getElementById('alias-new-qbo').value.trim();
+  const type = document.getElementById('alias-new-type').value;
+  if (!raw || !qbo) { alert('Enter both an ACH Works name and a QBO name.'); return; }
+  achAliases[raw] = { qboName: qbo, type };
+  saveACHAliasesToStorage();
+  document.getElementById('alias-new-raw').value = '';
+  document.getElementById('alias-new-qbo').value = '';
+  renderAliasTable();
+}
+
+function removeACHAlias(key) {
+  delete achAliases[key];
+  saveACHAliasesToStorage();
+  renderAliasTable();
+}
+
+// A name counts as a syndicator (money coming IN from them is capital, not a merchant payment) if:
+// it's aliased as 'vendor', OR it matches a syndicator name already known from the Syndication tab.
+function isKnownSyndicatorName(name) {
+  if (!name) return false;
+  const norm = normName(name);
+  if (!norm) return false;
+  if (typeof SYND_SUMMARY !== 'undefined' && SYND_SUMMARY.some(s => normName(s.s) === norm)) return true;
+  return false;
+}
+
 // ── ACH Works ─────────────────────────────────────────────────────────────────
 let achRawData = null, achCustData = null;
-let achDepRows = [], achExpRows = [], achMissing = [];
+let achDepRows = [], achExpRows = [], achSyndDepRows = [], achMissing = [];
 let achDepFiltered = [], achExpFiltered = [];
 
 function loadACHRaw(e) {
@@ -1594,7 +1668,7 @@ function processACH() {
     return m ? `${m[2]} ${m[1]}`.trim() : name;
   }
 
-  achDepRows = []; achExpRows = []; achMissing = [];
+  achDepRows = []; achExpRows = []; achSyndDepRows = []; achMissing = [];
   const missingSet = new Set();
   achRawData.forEach(row => {
     const trans   = String(row[transCol]||'').trim();
@@ -1605,7 +1679,8 @@ function processACH() {
     const date    = row[settleCol] || '';
     const settlID = String(row[settlIDCol]||'').trim();
     if (trans === 'D') {
-      let qboName = custLookup[rawName.toUpperCase()] || custLookup[rawNameFlipped.toUpperCase()];
+      const aliasHit = achAliases[rawName.toUpperCase()] || achAliases[rawNameFlipped.toUpperCase()];
+      let qboName = aliasHit?.qboName || custLookup[rawName.toUpperCase()] || custLookup[rawNameFlipped.toUpperCase()];
       if (!qboName) {
         const tryFuzzy = (nameToTry) => {
           const key18 = nameToTry.toUpperCase().substring(0,18);
@@ -1616,12 +1691,21 @@ function processACH() {
         };
         qboName = tryFuzzy(rawName) || tryFuzzy(rawNameFlipped);
       }
-      const missing = !qboName;
-      if (missing && !missingSet.has(rawName)) { missingSet.add(rawName); achMissing.push({achName:rawName,qboName:''}); }
-      achDepRows.push({depositNo:checkNo,date,depositTo:'ACHWorks',
-        receivedFrom:qboName||`⚠ NOT FOUND: ${rawName}`,
-        lineAccount:'Advance Receivable',lineDesc:qboName||`⚠ NOT FOUND: ${rawName}`,
-        amount,missing,rawName});
+
+      const isSyndicator = (aliasHit && aliasHit.type === 'vendor') ||
+        isKnownSyndicatorName(rawName) || isKnownSyndicatorName(rawNameFlipped) || isKnownSyndicatorName(qboName||'');
+
+      if (isSyndicator) {
+        achSyndDepRows.push({date, receivedFrom: qboName || rawNameFlipped || rawName,
+          account: 'Syndicator Capital Contribution', amount, rawName, matched: !!qboName});
+      } else {
+        const missing = !qboName;
+        if (missing && !missingSet.has(rawName)) { missingSet.add(rawName); achMissing.push({achName:rawName,qboName:''}); }
+        achDepRows.push({depositNo:checkNo,date,depositTo:'ACHWorks',
+          receivedFrom:qboName||`⚠ NOT FOUND: ${rawName}`,
+          lineAccount:'Advance Receivable',lineDesc:qboName||`⚠ NOT FOUND: ${rawName}`,
+          amount,missing,rawName});
+      }
     } else if (trans === 'C') {
       achExpRows.push({refNo:checkNo,account:'ACHWorks',payee:rawName,date,amount,
         description:settlID,expenseAccount:'Syndicator:Syndicator Distributions'});
@@ -1634,11 +1718,13 @@ function processACH() {
   sel.innerHTML='<option value="">All dates</option>'+dates.map(d=>`<option value="${d}">${d}</option>`).join('');
   const totDep=achDepRows.reduce((a,b)=>a+b.amount,0);
   const totExp=achExpRows.reduce((a,b)=>a+b.amount,0);
+  const totSyndDep=achSyndDepRows.reduce((a,b)=>a+b.amount,0);
   const fmtM=v=>'$'+Math.round(v).toLocaleString();
   document.getElementById('ach-kpis').style.display='grid';
   document.getElementById('ach-kpis').innerHTML=[
     {l:'Deposit rows (D)',v:achDepRows.length,s:'Advance receivable'},
     {l:'Total deposits',v:fmtM(totDep),s:'ACH amount in'},
+    {l:'Syndicator deposits',v:achSyndDepRows.length,s:fmtM(totSyndDep)+' capital in'},
     {l:'Expense rows (C)',v:achExpRows.length,s:'Syndicator distributions'},
     {l:'Total expenses',v:fmtM(totExp),s:'ACH amount out'},
     {l:'Missing names',v:achMissing.length,s:achMissing.length?'⚠ Need QBO match':'✓ All matched'},
@@ -1663,14 +1749,34 @@ function processACH() {
   }
   renderDepTable(achDepFiltered);
   renderExpTable(achExpFiltered);
+  renderSyndDepTable();
   document.getElementById('ach-results').style.display='block';
   document.getElementById('ach-export-dep').style.display='inline-flex';
   document.getElementById('ach-export-exp').style.display='inline-flex';
+  document.getElementById('ach-export-synd').style.display = achSyndDepRows.length ? 'inline-flex' : 'none';
   document.getElementById('ach-sub').textContent=
-    `${achDepRows.length} deposits · ${achExpRows.length} expenses · ${achMissing.length} missing names · matched on column "${custCol}"`;
+    `${achDepRows.length} deposits · ${achSyndDepRows.length} syndicator deposits · ${achExpRows.length} expenses · ${achMissing.length} missing names · matched on column "${custCol}"`;
+}
+
+function renderSyndDepTable() {
+  document.getElementById('synddep-count').textContent = achSyndDepRows.length + ' rows';
+  const head = '<thead><tr><th>Date</th><th>Received From</th><th>Account</th><th class="td-num">Amount</th></tr></thead>';
+  const body = achSyndDepRows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td style="color:${r.matched?'var(--text)':'var(--danger)'};font-weight:${r.matched?400:600}">${r.receivedFrom}${r.matched?'':' (unmatched raw name)'}</td>
+    <td>${r.account}</td>
+    <td class="td-num">$${r.amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+  </tr>`).join('');
+  document.getElementById('synddep-tbl').innerHTML = head +
+    `<tbody>${body || '<tr><td colspan="4" style="color:var(--text3)">No syndicator deposits found in this file.</td></tr>'}</tbody>`;
 }
 
 function updateACHName(achName, qboName) {
+  if (qboName) {
+    achAliases[achName.toUpperCase()] = { qboName, type: 'customer' };
+    saveACHAliasesToStorage();
+    renderAliasTable();
+  }
   achDepRows.forEach(r => {
     if (r.rawName===achName) { r.receivedFrom=qboName; r.lineDesc=qboName; r.missing=false; }
   });
@@ -1747,6 +1853,21 @@ function exportACH(type) {
     ws['!cols']=[{wch:16},{wch:14},{wch:18},{wch:44},{wch:20},{wch:44},{wch:14}];
     XLSX.utils.book_append_sheet(wb,ws,'Deposit');
     XLSX.writeFile(wb,`1st_Alliance_Deposit_${month}.xlsx`);
+  } else if (type==='synddep') {
+    const ws={};
+    ['Date','Received From','Account','Amount']
+      .forEach((h,i)=>{ws[colLetter(i+1)+'1']={t:'s',v:h};});
+    achSyndDepRows.forEach((r,ri)=>{
+      const row=ri+2;
+      ws[`A${row}`]={t:'s',v:r.date}; ws[`B${row}`]={t:'s',v:r.receivedFrom};
+      ws[`C${row}`]={t:'s',v:r.account}; ws[`D${row}`]={t:'n',v:r.amount,z:'#,##0.00'};
+    });
+    const last=achSyndDepRows.length+1;
+    ws[`A${last+1}`]={t:'s',v:'TOTAL'}; ws[`D${last+1}`]={t:'n',f:`SUM(D2:D${last})`,z:'#,##0.00'};
+    ws['!ref']=`A1:D${last+1}`;
+    ws['!cols']=[{wch:14},{wch:34},{wch:28},{wch:14}];
+    XLSX.utils.book_append_sheet(wb,ws,'Syndicator Deposits');
+    XLSX.writeFile(wb,`1st_Alliance_Syndicator_Deposits_${month}.xlsx`);
   } else {
     const ws={};
     ['Ref No','Account','Payee','Date','Amount','Description','Expense Account']
@@ -2977,6 +3098,21 @@ buildCommissions();
 buildAllDeals();
 buildWorksheet();
 buildSyndication();
+
+// One-time seed of aliases you've already told me about — safe to remove/edit in the UI above.
+(function seedDefaultACHAliases() {
+  let changed = false;
+  if (!achAliases['JUAN MENDOZA']) {
+    achAliases['JUAN MENDOZA'] = { qboName: 'LIFETIME FOUNDATION REPAIR +2', type: 'customer' };
+    changed = true;
+  }
+  if (!achAliases['AVANESOV, KAREN']) {
+    achAliases['AVANESOV, KAREN'] = { qboName: 'Karen Avanesov', type: 'vendor' };
+    changed = true;
+  }
+  if (changed) saveACHAliasesToStorage();
+  renderAliasTable();
+})();
 </script>
 </body>
 </html>
