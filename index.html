@@ -1094,10 +1094,23 @@ function loadComm(e) {
         merchant: r['Business Name'] || '',
         advanceType: r['Advance Type'] || 'New',
         amount: n(r['Amount']),
+        factor: n(r['Factor']) || null,
         payback: n(r['Payback']),
+        payments: n(r['Payments']) || null,
         freq: r['Frequency'] || '',
+        feePct: n(r['Fee %']) || 0,
         origFee: n(r['Fee Amount']),
+        commPct: n(r['Commission %']) || 0,
         commFee: n(r['Commission Payment']),
+        datePaid: normalizeDate(r['Date Paid']) || '',
+        isoOverridePct: n(r['ISO Override %']) || 0,
+        isoOverride: n(r['ISO Override']) || 0,
+        salesOverridePct: n(r['Sales Override %']) || 0,
+        salesOverride: n(r['Sales Override']) || 0,
+        totalCommPct: n(r['Total Commission %']) || 0,
+        totalComm: n(r['Total Commission']) || 0,
+        adjClawbacks: n(r['Adj Clawbacks']) || 0,
+        commNetClawbacks: n(r['Comm, net of Clawbacks']) || 0,
       })).filter(r => r.funded && r.merchant && r.amount > 0);
 
       if (!tsRows.length) {
@@ -1206,13 +1219,19 @@ function processTrackingSheet() {
     const isRenewalType = /renew|add.?on/i.test(row.advanceType);
     // Synthetic key since Tracking Sheet has no Agreement #; used for bank-tx overrides in Monthly tab.
     const agr = `TS-${row.funded}-${row.merchant}`.replace(/\s+/g,'_');
-    return calcDeal({
+    const d = calcDeal({
       agr, merchant: row.merchant, iso: row.iso, funded: row.funded,
       amount: row.amount, repayment: row.payback,
       origFee: row.origFee, commFee: row.commFee,
       status: 'Performing', freq: row.freq, state: '',
       position: isRenewalType ? '+2' : '+1'
     });
+    // Attach the raw tracking commission columns so the Commission tab can mirror the Tracking Sheet.
+    d.track = row;
+    d.advanceType = row.advanceType;
+    d.factor = row.factor || d.factor;
+    d.payments = row.payments || d.payments;
+    return d;
   }).filter(d => d.amount > 0);
 
   bankTxOverrides = {};
@@ -1408,45 +1427,68 @@ function exportSPAReport(deals, monthLabel, commSheet, spaSheet) {
   XLSX.utils.book_append_sheet(wb, ws2, `${monthLabel} SPA`);
 
   // ── Sheet 3: Commission placeholder ─────────────────────────────────────
+  // Commission tab — mirrors your real "05.26 Commission" layout exactly.
+  // Columns (1-indexed): A Agreement URL(XLOOKUP), B Funding Date, C ISO, D Business Name,
+  // E Opportunity Name, F Advance Type, G Amount, H Factor, I Payback, J Payments, K Frequency,
+  // L Fee %, M Fee Amount, N Commission %, O Commission Payment, P Date Paid, Q ISO Override %,
+  // R ISO Override, S Date Paid, T Sales Override %, U Sales Override, V Date Paid,
+  // W Total Commission %, X Total Commission, Y Adj Clawbacks, Z Clawback Date, AA Comm net of Clawbacks.
+  // The SPA tab's SUMIFS match on col E (Opportunity Name) and pull col M (Fee Amount) and
+  // col O (Commission Payment) — this layout keeps those columns exactly where they belong.
   const ws3 = {};
   const commHdrs = [
-    'Agreement URL','Payment Method','Status','Contact ID',
-    'Opportunity: Opportunity Name','ISO Commission','Commission %',
-    'ISO Override','ISO Override %','Sales Override','Sales Override %',
-    'Total Commission %','Fee Amount','Commission Payment','Total Commission',
-    'Clawback','Net Commission','Date Paid'
+    'Agreement URL','Funding Date','ISO','Business Name','Opportunity Name','Advance Type',
+    'Amount','Factor','Payback','Payments','Frequency','Fee %','Fee Amount','Commission %',
+    'Commission Payment','Date Paid','ISO Override %','ISO Override','Date Paid','Sales Override %',
+    'Sales Override','Date Paid','Total Commission %','Total Commission','Adj Clawbacks',
+    'Clawback Date','Comm, net of Clawbacks'
   ];
   commHdrs.forEach((h,i) => { ws3[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
-  // Populate each deal. The dashboard knows Fee Amount (orig fee, col M) and Commission Payment
-  // (col N); the remaining money columns are computed with live formulas so the tab foots the
-  // way the May tab does. Columns the dashboard has no source for (ISO Commission split, the
-  // various % columns, Overrides, Date Paid) are left blank for your colleague to paste from the
-  // Salesforce Commission export. Col M and col O stay the SUMIFS targets used by the SPA sheet.
+
   deals.forEach((d,ri) => {
     const r = ri + 2;
-    ws3[`A${r}`] = {t:'s', v: d.agr};
-    ws3[`B${r}`] = {t:'s', v: 'ACH'};
-    ws3[`C${r}`] = {t:'s', v: d.status||'Active'};
-    ws3[`D${r}`] = {t:'s', v: d.contactId||''};
-    ws3[`E${r}`] = {t:'s', v: d.merchant};
-    // F ISO Commission, H ISO Override, J Sales Override — from Salesforce export, left blank.
-    // G/I/K/L percentage columns — from Salesforce export, left blank.
-    ws3[`M${r}`] = {t:'n', v: n(d.origFee), z:'#,##0.00'};                       // Fee Amount (orig fee)
-    ws3[`N${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};                       // Commission Payment
-    // Total Commission = ISO Commission + ISO Override + Sales Override + Commission Payment.
-    // Those override columns are blank now, so this equals Commission Payment until pasted in.
-    ws3[`O${r}`] = {t:'n', f:`SUM(F${r},H${r},J${r},N${r})`, v:n(d.commFee), z:'#,##0.00'};
-    // P Clawback — blank (manual). Q Net Commission = Total Commission − Clawback.
-    ws3[`Q${r}`] = {t:'n', f:`O${r}-P${r}`, v:n(d.commFee), z:'#,##0.00'};
+    const t = d.track || {};
+    // A: Agreement URL — write the value directly (XLOOKUP isn't supported in older Excel/LibreOffice)
+    ws3[`A${r}`] = {t:'s', v: d.agr || ''};
+    ws3[`B${r}`] = {t:'s', v: t.funded || d.funded || ''};
+    ws3[`C${r}`] = {t:'s', v: d.iso || ''};
+    ws3[`D${r}`] = {t:'s', v: (t.merchant||d.merchant||'').replace(/\s*\+\d+\s*$/,'')}; // Business Name (no +N)
+    ws3[`E${r}`] = {t:'s', v: d.merchant || ''};                                          // Opportunity Name (matches SPA col F)
+    ws3[`F${r}`] = {t:'s', v: d.advanceType || (d.renewal?'Renewal':'New')};
+    ws3[`G${r}`] = {t:'n', v: n(d.amount), z:'#,##0.00'};                                  // Amount
+    ws3[`H${r}`] = {t:'n', v: t.factor || d.factor || 1.49, z:'0.00'};                     // Factor
+    ws3[`I${r}`] = {t:'n', f:`G${r}*H${r}`, v:n(d.repayment), z:'#,##0.00'};               // Payback
+    ws3[`J${r}`] = {t:'n', v: t.payments || d.payments || 0, z:'#,##0'};                   // Payments
+    ws3[`K${r}`] = {t:'s', v: d.freq || ''};                                              // Frequency
+    ws3[`L${r}`] = {t:'n', v: t.feePct || 0, z:'0.00%'};                                   // Fee %
+    ws3[`M${r}`] = {t:'n', f:`G${r}*L${r}`, v:n(d.origFee), z:'#,##0.00'};                 // Fee Amount ← SPA pulls this
+    ws3[`N${r}`] = {t:'n', v: t.commPct || 0, z:'0.00%'};                                  // Commission %
+    ws3[`O${r}`] = {t:'n', f:`G${r}*N${r}`, v:n(d.commFee), z:'#,##0.00'};                 // Commission Payment ← SPA pulls this
+    ws3[`P${r}`] = {t:'s', v: t.datePaid || ''};                                          // Date Paid
+    ws3[`Q${r}`] = {t:'n', v: t.isoOverridePct || 0, z:'0.00%'};                           // ISO Override %
+    ws3[`R${r}`] = {t:'n', f:`Q${r}*G${r}`, v:n(t.isoOverride), z:'#,##0.00'};             // ISO Override
+    ws3[`T${r}`] = {t:'n', v: t.salesOverridePct || 0, z:'0.00%'};                         // Sales Override %
+    ws3[`U${r}`] = {t:'n', f:`G${r}*T${r}`, v:n(t.salesOverride), z:'#,##0.00'};           // Sales Override
+    ws3[`W${r}`] = {t:'n', f:`N${r}+Q${r}+T${r}`, v:(t.commPct||0)+(t.isoOverridePct||0)+(t.salesOverridePct||0), z:'0.00%'}; // Total Commission %
+    ws3[`X${r}`] = {t:'n', f:`G${r}*W${r}`, v:n(t.totalComm)||n(d.commFee), z:'#,##0.00'}; // Total Commission
+    ws3[`Y${r}`] = {t:'n', v: n(t.adjClawbacks), z:'#,##0.00'};                            // Adj Clawbacks
+    ws3[`AA${r}`] = {t:'n', f:`X${r}-Y${r}`, v:n(t.commNetClawbacks)||n(d.commFee), z:'#,##0.00'}; // Comm net of Clawbacks
   });
-  const commLast = deals.length + 1;
-  const commTotalRow = commLast + 1;
-  ws3[`A${commTotalRow}`] = {t:'s', v:'TOTAL', s:{font:{bold:true}}};
-  ['F','H','J','M','N','O','P','Q'].forEach(col => {
+
+  const commLast = deals.length + 1;                 // last deal row
+  const commTotalRow = commLast + 1;                 // subtotal row (matches your row-20 pattern)
+  // Subtotals across the money columns
+  ['M','O','R','U','X','AA'].forEach(col => {
     ws3[`${col}${commTotalRow}`] = {t:'n', f:`SUM(${col}2:${col}${commLast})`, z:'#,##0.00', s:{font:{bold:true}}};
   });
+  ws3[`A${commTotalRow}`] = {t:'s', v:'TOTAL', s:{font:{bold:true}}};
+
   ws3['!ref'] = `A1:${colLetter(commHdrs.length)}${commTotalRow}`;
-  ws3['!cols'] = commHdrs.map((_,i) => ({wch: i===4?42:i===0?16:14}));
+  ws3['!cols'] = [
+    {wch:16},{wch:14},{wch:22},{wch:30},{wch:42},{wch:12},{wch:12},{wch:8},{wch:12},{wch:10},
+    {wch:10},{wch:8},{wch:12},{wch:12},{wch:16},{wch:12},{wch:12},{wch:12},{wch:12},{wch:12},
+    {wch:12},{wch:12},{wch:14},{wch:16},{wch:12},{wch:12},{wch:18}
+  ];
   XLSX.utils.book_append_sheet(wb, ws3, `${monthLabel} Commission`);
 
   const fname = `1st_Alliance_SPA_${monthLabel.replace('.','_')}.xlsx`;
