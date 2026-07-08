@@ -1543,30 +1543,78 @@ function processACH() {
     const qboName = String(row[qboKey]||'').trim();
     if (spaName && qboName && qboName !== '0') custLookup[spaName] = qboName;
   });
+
   const rawKeys = Object.keys(achRawData[0] || {});
   const findCol = (...patterns) => rawKeys.find(k => patterns.some(p => new RegExp(p,'i').test(k))) || '';
+
+  // Column whose value is identical across (almost) every row is almost certainly a fixed
+  // originator/company field (e.g. "Original Payee" = your own company name on every line),
+  // not the per-transaction counterparty — skip those when picking the name column.
+  function isConstantColumn(col) {
+    if (!col) return true;
+    const sample = achRawData.slice(0, Math.min(achRawData.length, 200));
+    const vals = new Set(sample.map(r => String(r[col]||'').trim()).filter(Boolean));
+    return sample.length > 3 && vals.size <= 1;
+  }
+  // Try priority groups in order; within each group, skip constant columns and move to the
+  // next candidate before falling back to a broader/weaker pattern group.
+  function pickNameColumn() {
+    const priorityGroups = [
+      ['^customer.?name$', '^individual.?name$', '^received.?from$', '^payer.?name$'],
+      ['customer.?name', 'individual.?name', 'received.?from'],
+      ['payee'],
+      ['name'],
+    ];
+    const tried = new Set();
+    for (const patterns of priorityGroups) {
+      const candidates = rawKeys.filter(k => !tried.has(k) && patterns.some(p => new RegExp(p,'i').test(k)));
+      for (const c of candidates) {
+        tried.add(c);
+        if (!isConstantColumn(c)) return c;
+      }
+    }
+    // Nothing non-constant found — fall back to the first match anyway (better than no column at all).
+    for (const patterns of priorityGroups) {
+      const c = rawKeys.find(k => patterns.some(p => new RegExp(p,'i').test(k)));
+      if (c) return c;
+    }
+    return '';
+  }
+
   const checkCol   = findCol('check','ref.?no');
-  const custCol    = findCol('customer.?name','payee','name');
+  const custCol    = pickNameColumn();
   const transCol   = findCol('trans.?type','type');
   const amtCol     = findCol('^amount$','amount');
   const settleCol  = findCol('date.?to.?settle','settle.?date','date');
   const settlIDCol = findCol('settlement.?id','settle.?id');
+
+  // "LAST, FIRST" → "FIRST LAST" so personal names match how they appear in QBO.
+  function flipLastFirst(name) {
+    const m = name.match(/^([^,]+),\s*(.+)$/);
+    return m ? `${m[2]} ${m[1]}`.trim() : name;
+  }
+
   achDepRows = []; achExpRows = []; achMissing = [];
   const missingSet = new Set();
   achRawData.forEach(row => {
     const trans   = String(row[transCol]||'').trim();
     const rawName = String(row[custCol]||'').trim();
+    const rawNameFlipped = flipLastFirst(rawName);
     const checkNo = String(row[checkCol]||'').trim();
     const amount  = parseFloat(String(row[amtCol]||'0').replace(/[$,]/g,'')) || 0;
     const date    = row[settleCol] || '';
     const settlID = String(row[settlIDCol]||'').trim();
     if (trans === 'D') {
-      let qboName = custLookup[rawName.toUpperCase()];
+      let qboName = custLookup[rawName.toUpperCase()] || custLookup[rawNameFlipped.toUpperCase()];
       if (!qboName) {
-        const key18 = rawName.toUpperCase().substring(0,18);
-        for (const [k,v] of Object.entries(custLookup)) {
-          if (k.startsWith(key18) || key18.startsWith(k.substring(0,18))) { qboName=v; break; }
-        }
+        const tryFuzzy = (nameToTry) => {
+          const key18 = nameToTry.toUpperCase().substring(0,18);
+          for (const [k,v] of Object.entries(custLookup)) {
+            if (k.startsWith(key18) || key18.startsWith(k.substring(0,18))) return v;
+          }
+          return null;
+        };
+        qboName = tryFuzzy(rawName) || tryFuzzy(rawNameFlipped);
       }
       const missing = !qboName;
       if (missing && !missingSet.has(rawName)) { missingSet.add(rawName); achMissing.push({achName:rawName,qboName:''}); }
@@ -1579,6 +1627,7 @@ function processACH() {
         description:settlID,expenseAccount:'Syndicator:Syndicator Distributions'});
     }
   });
+
   achDepFiltered=[...achDepRows]; achExpFiltered=[...achExpRows];
   const dates=[...new Set(achDepRows.map(r=>r.date).filter(Boolean))].sort();
   const sel=document.getElementById('dep-date-filter');
@@ -1618,7 +1667,7 @@ function processACH() {
   document.getElementById('ach-export-dep').style.display='inline-flex';
   document.getElementById('ach-export-exp').style.display='inline-flex';
   document.getElementById('ach-sub').textContent=
-    `${achDepRows.length} deposits · ${achExpRows.length} expenses · ${achMissing.length} missing names`;
+    `${achDepRows.length} deposits · ${achExpRows.length} expenses · ${achMissing.length} missing names · matched on column "${custCol}"`;
 }
 
 function updateACHName(achName, qboName) {
