@@ -336,65 +336,53 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
   <div id="upload" class="panel">
     <div class="page-header">
       <div class="page-title">Upload data</div>
-      <div class="page-sub">Upload both Salesforce CSV exports each month to refresh the dashboard</div>
+      <div class="page-sub">Upload each month's reports to refresh the dashboard — CSV or Excel, either works</div>
     </div>
 
     <div class="alert alert-info">
-      ℹ️ Export both files from Salesforce each month: the <strong>SPA Report</strong> (deal data) and the <strong>Commission Report</strong> (fee data). Upload them below — all columns calculate automatically.
+      ℹ️ <strong>SPA Report</strong> (deal data) pairs with <strong>Commission Report / Tracking Sheet</strong> (fee & commission data — same report, however you export it) to build the dashboard. If your Tracking Sheet already has everything in one file, you can skip the SPA Report and process it standalone.
     </div>
 
     <div class="card-grid">
       <div class="card">
-        <div class="card-title">① SPA Report CSV <span id="spa-check" style="color:var(--success)"></span></div>
+        <div class="card-title">① SPA Report <span id="spa-check" style="color:var(--success)"></span></div>
         <label class="upload-zone" id="spa-zone"
           ondragover="this.classList.add('drag');event.preventDefault()"
           ondragleave="this.classList.remove('drag')"
           ondrop="handleDrop(event,'spa')">
           <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-          <div class="upload-title">Drop SPA Report CSV here</div>
-          <div class="upload-sub">Tab 1 — raw Salesforce deal data</div>
-          <input type="file" accept=".csv" id="spa-upload" onchange="loadSPA(event)" style="display:none">
+          <div class="upload-title">Drop SPA Report here (.csv or .xlsx)</div>
+          <div class="upload-sub">Raw Salesforce deal data</div>
+          <input type="file" accept=".csv,.xlsx,.xls" id="spa-upload" onchange="loadSPA(event)" style="display:none">
         </label>
         <div id="spa-status" style="font-size:12px;color:var(--text3)"></div>
       </div>
       <div class="card">
-        <div class="card-title">② Commission Report CSV <span id="comm-check" style="color:var(--success)"></span></div>
+        <div class="card-title">② Commission Report / Tracking Sheet <span id="comm-check" style="color:var(--success)"></span></div>
         <label class="upload-zone" id="comm-zone"
           ondragover="this.classList.add('drag');event.preventDefault()"
           ondragleave="this.classList.remove('drag')"
           ondrop="handleDrop(event,'comm')">
           <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-          <div class="upload-title">Drop Commission Report CSV here</div>
-          <div class="upload-sub">Commission tab — fee & commission amounts</div>
-          <input type="file" accept=".csv" id="comm-upload" onchange="loadComm(event)" style="display:none">
+          <div class="upload-title">Drop Commission Report / Tracking Sheet here (.csv or .xlsx)</div>
+          <div class="upload-sub">Fee & commission amounts — matched by Agreement # if present, otherwise Business Name + Funding Date</div>
+          <input type="file" accept=".csv,.xlsx,.xls" id="comm-upload" onchange="loadComm(event)" style="display:none">
         </label>
         <div id="comm-status" style="font-size:12px;color:var(--text3)"></div>
       </div>
     </div>
 
     <div id="process-btn-wrap" style="display:none;margin-bottom:1.25rem">
-      <button class="btn btn-primary" onclick="processData()">⚡ Process & build dashboard</button>
+      <button class="btn btn-primary" onclick="processData()">⚡ Process & build dashboard (SPA + Commission, matched by Agreement #)</button>
     </div>
 
-    <div class="card">
-      <div class="card-title">③ Or upload your combined Tracking Sheet directly <span id="ts-check" style="color:var(--success)"></span></div>
-      <div class="page-sub" style="margin-bottom:.75rem">Already have Fee Amount + Commission Payment merged into one file (your master ledger)? Upload it here instead of separate SPA/Commission CSVs — no Agreement # needed, matched by Business Name + Funding Date.</div>
-      <label class="upload-zone" id="ts-zone"
-        ondragover="this.classList.add('drag');event.preventDefault()"
-        ondragleave="this.classList.remove('drag')"
-        ondrop="handleTSDrop(event)">
-        <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-        <div class="upload-title">Drop Tracking Sheet .xlsx here</div>
-        <div class="upload-sub">Needs: Funding Date, ISO, Business Name, Advance Type, Amount, Payback, Fee Amount, Commission Payment, Frequency</div>
-        <input type="file" accept=".xlsx,.xls" id="ts-upload" onchange="loadTrackingSheet(event)" style="display:none">
-      </label>
-      <div id="ts-status" style="font-size:12px;color:var(--text3)"></div>
-      <div id="ts-month-wrap" style="display:none;margin-top:.75rem">
-        <div class="controls">
-          <label style="font-size:12px;color:var(--text3)">Funding month to load:</label>
-          <select id="ts-month-select" style="width:160px"></select>
-          <button class="btn btn-primary" onclick="processTrackingSheet()">⚡ Process this month</button>
-        </div>
+    <div id="ts-month-wrap" style="display:none;margin-bottom:1.25rem" class="card">
+      <div class="card-title">Process Tracking Sheet standalone</div>
+      <div class="page-sub" style="margin-bottom:.75rem">This file has everything needed per deal already — no separate SPA Report required. Pick a funding month and process it directly.</div>
+      <div class="controls">
+        <label style="font-size:12px;color:var(--text3)">Funding month to load:</label>
+        <select id="ts-month-select" style="width:160px"></select>
+        <button class="btn btn-primary" onclick="processTrackingSheet()">⚡ Process this month</button>
       </div>
     </div>
 
@@ -453,9 +441,9 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
             ondragleave="this.classList.remove('drag')"
             ondrop="handleACHDrop(event,'raw')">
             <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-            <div class="upload-title">Drop ACH Works CSV here</div>
+            <div class="upload-title">Drop ACH Works file here (.csv or .xlsx)</div>
             <div class="upload-sub">Raw export from ACH Works website</div>
-            <input type="file" accept=".csv" id="ach-raw-upload" onchange="loadACHRaw(event)" style="display:none">
+            <input type="file" accept=".csv,.xlsx,.xls" id="ach-raw-upload" onchange="loadACHRaw(event)" style="display:none">
           </label>
           <div id="ach-raw-status" style="font-size:12px;color:var(--text3)"></div>
         </div>
@@ -466,9 +454,9 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
             ondragleave="this.classList.remove('drag')"
             ondrop="handleACHDrop(event,'cust')">
             <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-            <div class="upload-title">Drop QBO Customer Name CSV here</div>
+            <div class="upload-title">Drop QBO Customer Name file here (.csv or .xlsx)</div>
             <div class="upload-sub">Monthly export from QuickBooks — customer list</div>
-            <input type="file" accept=".csv" id="ach-cust-upload" onchange="loadACHCust(event)" style="display:none">
+            <input type="file" accept=".csv,.xlsx,.xls" id="ach-cust-upload" onchange="loadACHCust(event)" style="display:none">
           </label>
           <div id="ach-cust-status" style="font-size:12px;color:var(--text3)"></div>
         </div>
@@ -671,6 +659,30 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
         <div class="card-title">Unmatched remittance rows</div>
         <div class="page-sub" style="margin-bottom:.5rem">Payee names in the Remittances file that don't match any syndicator in your Syndicator-Summary, or dates falling outside Oct 2025–Apr 2026. Check spelling/aliases if this list isn't empty.</div>
         <div class="tbl-wrap"><table id="recon-unmatched-tbl"></table></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.5rem">
+      <div class="card-title">Quality M&D Syndication Running Balance <span id="qmd-check" style="color:var(--success)"></span></div>
+      <div class="page-sub" style="margin-bottom:.75rem">Their own Deal List + Syndicator Deposits report — their side of the balance. QBO comparison isn't wired up yet; this shows what's in their file so you can compare manually for now.</div>
+      <label class="upload-zone" id="qmd-zone"
+        ondragover="this.classList.add('drag');event.preventDefault()"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleQMDDrop(event)">
+        <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        <div class="upload-title">Drop Quality M&D Syndication Running Balance .xlsx here</div>
+        <div class="upload-sub">Needs a "Deal List" tab and a "Syndicator Deposits" tab</div>
+        <input type="file" accept=".xlsx,.xls" id="qmd-upload" onchange="loadQMD(event)" style="display:none">
+      </label>
+      <div id="qmd-status" style="font-size:12px;color:var(--text3)"></div>
+
+      <div id="qmd-results" style="display:none;margin-top:1rem">
+        <div class="kpi-grid" id="qmd-kpis"></div>
+        <div class="card" style="padding:0;margin-top:1rem">
+          <div class="tbl-wrap" style="max-height:50vh;overflow-y:auto">
+            <table id="qmd-deposits-tbl" style="font-size:11px"></table>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -970,37 +982,129 @@ function filterAll() {
   }));
 }
 
-// ── CSV Upload ────────────────────────────────────────────────────────────────
+// ── Universal table reader — CSV or Excel, same callback shape as Papa.parse ───
+function readTableFile(file, onData, onError) {
+  if (!file) return;
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        const wb = XLSX.read(evt.target.result, {type:'array', cellDates:true});
+        const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'main') || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        onData(rows, sheetName);
+      } catch (err) {
+        (onError||(()=>{}))(err);
+      }
+    };
+    reader.onerror = () => (onError||(()=>{}))(new Error('Could not read file'));
+    reader.readAsArrayBuffer(file);
+  } else {
+    Papa.parse(file, {header:true, skipEmptyLines:true,
+      complete(results){ onData(results.data, null); },
+      error(err){ (onError||(()=>{}))(err); }
+    });
+  }
+}
+
+function excelDateToISO(v) {
+  if (v instanceof Date && !isNaN(v)) {
+    return v.getFullYear() + '-' + String(v.getMonth()+1).padStart(2,'0') + '-' + String(v.getDate()).padStart(2,'0');
+  }
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+  }
+  const s = String(v||'').trim();
+  const d2 = new Date(s);
+  if (s && !isNaN(d2)) return d2.getFullYear()+'-'+String(d2.getMonth()+1).padStart(2,'0')+'-'+String(d2.getDate()).padStart(2,'0');
+  return '';
+}
+// Only touches values that are actual Date objects (from Excel cellDates) — CSV strings pass through untouched.
+// Handles Date instances (from Excel), numeric excel serials, and date-like strings (from CSV) alike.
+// Falls back to the original value if it doesn't look like a date, so non-date fields are never touched.
+function normalizeDate(v) { if (!v) return v; const iso = excelDateToISO(v); return iso || v; }
+
+// ── Report Upload (SPA + Commission Report / Tracking Sheet) ──────────────────
 let spaData = null, commData = null;
+let commFormat = null; // 'classic' (AGR-keyed) | 'tracking' (Business Name + Funding Date keyed)
+let tsRows = [];
 
 function loadSPA(e) {
   const file = e.target.files[0];
   if (!file) return;
-  Papa.parse(file, {header:true, skipEmptyLines:true, complete(results) {
-    spaData = results.data;
+  document.getElementById('spa-status').textContent = 'Reading file...';
+  readTableFile(file, (rows) => {
+    spaData = rows;
     document.getElementById('spa-status').textContent = `✓ Loaded ${spaData.length} rows`;
     document.getElementById('spa-check').textContent = ' ✓';
     document.getElementById('spa-zone').classList.add('upload-ok');
     checkBothLoaded();
-  }});
+  }, (err) => {
+    document.getElementById('spa-status').textContent = '⚠️ Could not read file: ' + err.message;
+  });
 }
 
 function loadComm(e) {
   const file = e.target.files[0];
   if (!file) return;
-  Papa.parse(file, {header:true, skipEmptyLines:true, complete(results) {
-    commData = results.data;
-    document.getElementById('comm-status').textContent = `✓ Loaded ${commData.length} rows`;
+  document.getElementById('comm-status').textContent = 'Reading file...';
+  readTableFile(file, (rows, sheetName) => {
+    commData = rows;
     document.getElementById('comm-check').textContent = ' ✓';
     document.getElementById('comm-zone').classList.add('upload-ok');
+
+    // Detect format: classic Commission Report (has an Agreement/AGR column) vs
+    // Tracking Sheet (keyed by Business Name + Funding Date, no Agreement #).
+    const sample = rows[0] || {};
+    const hasAgr = ['Agreement URL','Agreement','AGR','Agreement #'].some(k => sample[k] !== undefined);
+    const hasTrackingCols = sample['Business Name'] !== undefined && sample['Funding Date'] !== undefined;
+
+    if (hasTrackingCols && !hasAgr) {
+      commFormat = 'tracking';
+      tsRows = rows.map(r => ({
+        funded: normalizeDate(r['Funding Date']),
+        iso: r['ISO'] || '',
+        merchant: r['Business Name'] || '',
+        advanceType: r['Advance Type'] || 'New',
+        amount: n(r['Amount']),
+        payback: n(r['Payback']),
+        freq: r['Frequency'] || '',
+        origFee: n(r['Fee Amount']),
+        commFee: n(r['Commission Payment']),
+      })).filter(r => r.funded && r.merchant && r.amount > 0);
+
+      if (!tsRows.length) {
+        document.getElementById('comm-status').innerHTML = `⚠️ No usable rows found${sheetName?` in sheet "${sheetName}"`:''}. Columns found: ${Object.keys(sample).join(', ')}`;
+        document.getElementById('ts-month-wrap').style.display = 'none';
+        return;
+      }
+      const months = [...new Set(tsRows.map(r => r.funded.substring(0,7)))].sort().reverse();
+      const sel = document.getElementById('ts-month-select');
+      sel.innerHTML = months.map(m => {
+        const [y,mo] = m.split('-');
+        const label = new Date(y, mo-1, 1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+        return `<option value="${m}">${label}</option>`;
+      }).join('');
+      document.getElementById('comm-status').textContent =
+        `✓ Loaded ${tsRows.length} usable rows (Tracking Sheet format, no Agreement # — matched by Business Name + Funding Date) across ${months.length} month(s)`;
+      document.getElementById('ts-month-wrap').style.display = 'block';
+    } else {
+      commFormat = 'classic';
+      document.getElementById('comm-status').textContent = `✓ Loaded ${commData.length} rows (Commission Report format, matched by Agreement #)`;
+      document.getElementById('ts-month-wrap').style.display = 'none';
+    }
     checkBothLoaded();
-  }});
+  }, (err) => {
+    document.getElementById('comm-status').textContent = '⚠️ Could not read file: ' + err.message;
+  });
 }
 
 function checkBothLoaded() {
-  if (spaData && commData) {
-    document.getElementById('process-btn-wrap').style.display = 'block';
-  }
+  document.getElementById('process-btn-wrap').style.display =
+    (spaData && commData && commFormat === 'classic') ? 'block' : 'none';
 }
 
 function handleDrop(e, type) {
@@ -1037,7 +1141,7 @@ function processData() {
     const agr     = String(row['Agreement URL'] || row['Agreement'] || row['AGR'] || '').match(/AGR-[\d]+/i)?.[0] || '';
     const merchant= row['Opportunity: Opportunity Name'] || row['Merchant'] || row['Account Name'] || '';
     const iso     = row['Referral Source: Account Name'] || row['ISO'] || row['Referral Source'] || '';
-    const funded  = row['Opportunity: Funded Date'] || row['Funded Date'] || '';
+    const funded  = normalizeDate(row['Opportunity: Funded Date'] || row['Funded Date'] || '');
     const amount  = n(row['Agreement Amount'] || row['Funded Amount'] || row['Amount'] || 0);
     const repayment = n(row['Repayment Amount'] || row['Total Payback'] || 0);
     const status  = row['Status Detail'] || row['Status'] || 'Performing';
@@ -1066,81 +1170,6 @@ function processData() {
   // Switch to overview
   showPanel('overview', document.querySelector('.nav-item'));
   alert(`✓ Done! ${processedDeals.length} deals processed. Renewal deals are highlighted in the Monthly Funded tab — enter their Bank Transaction amounts there.`);
-}
-
-// ── Combined Tracking Sheet upload (single file, already merged) ──────────────
-let tsRows = [];
-
-function excelDateToISO(v) {
-  if (v instanceof Date && !isNaN(v)) {
-    return v.getFullYear() + '-' + String(v.getMonth()+1).padStart(2,'0') + '-' + String(v.getDate()).padStart(2,'0');
-  }
-  if (typeof v === 'number') {
-    const d = XLSX.SSF.parse_date_code(v);
-    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
-  }
-  const s = String(v||'').trim();
-  const d2 = new Date(s);
-  if (s && !isNaN(d2)) return d2.getFullYear()+'-'+String(d2.getMonth()+1).padStart(2,'0')+'-'+String(d2.getDate()).padStart(2,'0');
-  return '';
-}
-
-function loadTrackingSheet(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  document.getElementById('ts-status').textContent = 'Reading file...';
-  const reader = new FileReader();
-  reader.onload = function(evt) {
-    try {
-      const wb = XLSX.read(evt.target.result, {type:'array', cellDates:true});
-      const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'main') || wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const raw = XLSX.utils.sheet_to_json(ws, {defval:''});
-      tsRows = raw.map(r => ({
-        funded: excelDateToISO(r['Funding Date']),
-        iso: r['ISO'] || '',
-        merchant: r['Business Name'] || '',
-        advanceType: r['Advance Type'] || 'New',
-        amount: n(r['Amount']),
-        payback: n(r['Payback']),
-        freq: r['Frequency'] || '',
-        origFee: n(r['Fee Amount']),
-        commFee: n(r['Commission Payment']),
-      })).filter(r => r.funded && r.merchant && r.amount > 0);
-
-      if (!tsRows.length) {
-        document.getElementById('ts-status').innerHTML = `⚠️ No usable rows found in sheet "${sheetName}". Columns found: ${raw[0]?Object.keys(raw[0]).join(', '):'(none)'}`;
-        return;
-      }
-
-      // Build distinct funding months present, most recent first
-      const months = [...new Set(tsRows.map(r => r.funded.substring(0,7)))].sort().reverse();
-      const sel = document.getElementById('ts-month-select');
-      sel.innerHTML = months.map(m => {
-        const [y,mo] = m.split('-');
-        const label = new Date(y, mo-1, 1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
-        return `<option value="${m}">${label}</option>`;
-      }).join('');
-
-      document.getElementById('ts-status').textContent = `✓ Loaded ${tsRows.length} rows from sheet "${sheetName}" across ${months.length} month(s)`;
-      document.getElementById('ts-check').textContent = ' ✓';
-      document.getElementById('ts-zone').classList.add('upload-ok');
-      document.getElementById('ts-month-wrap').style.display = 'block';
-    } catch (err) {
-      document.getElementById('ts-status').textContent = '⚠️ Could not read file: ' + err.message;
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function handleTSDrop(e) {
-  e.preventDefault();
-  document.getElementById('ts-zone').classList.remove('drag');
-  const file = e.dataTransfer.files[0];
-  if (!file) return;
-  const input = document.getElementById('ts-upload');
-  const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
-  loadTrackingSheet({target:{files:dt.files}});
 }
 
 function processTrackingSheet() {
@@ -1462,24 +1491,30 @@ let achDepFiltered = [], achExpFiltered = [];
 
 function loadACHRaw(e) {
   const file = e.target.files[0]; if (!file) return;
-  Papa.parse(file, {header:true, skipEmptyLines:true, complete(r) {
-    achRawData = r.data;
+  document.getElementById('ach-raw-status').textContent = 'Reading file...';
+  readTableFile(file, (rows) => {
+    achRawData = rows;
     document.getElementById('ach-raw-status').textContent = `✓ ${achRawData.length} rows loaded`;
     document.getElementById('ach-raw-check').textContent = ' ✓';
     document.getElementById('ach-raw-zone').classList.add('upload-ok');
     checkACHReady();
-  }});
+  }, (err) => {
+    document.getElementById('ach-raw-status').textContent = '⚠️ Could not read file: ' + err.message;
+  });
 }
 
 function loadACHCust(e) {
   const file = e.target.files[0]; if (!file) return;
-  Papa.parse(file, {header:true, skipEmptyLines:true, complete(r) {
-    achCustData = r.data;
+  document.getElementById('ach-cust-status').textContent = 'Reading file...';
+  readTableFile(file, (rows) => {
+    achCustData = rows;
     document.getElementById('ach-cust-status').textContent = `✓ ${achCustData.length} customers loaded`;
     document.getElementById('ach-cust-check').textContent = ' ✓';
     document.getElementById('ach-cust-zone').classList.add('upload-ok');
     checkACHReady();
-  }});
+  }, (err) => {
+    document.getElementById('ach-cust-status').textContent = '⚠️ Could not read file: ' + err.message;
+  });
 }
 
 function handleACHDrop(e, type) {
@@ -2800,6 +2835,90 @@ function exportReconciliation() {
 
   XLSX.utils.book_append_sheet(wb, ws, 'Reconciliation');
   XLSX.writeFile(wb, '1st_Alliance_Reconciliation.xlsx');
+}
+
+// ── Quality M&D Syndication Running Balance (their side, informational) ───────
+let QMD_DEPOSITS = [];
+let QMD_DEALS = [];
+
+function trimKeys(row) {
+  const out = {};
+  Object.keys(row).forEach(k => { out[k.trim()] = row[k]; });
+  return out;
+}
+
+function loadQMD(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('qmd-status').textContent = 'Reading file...';
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const wb = XLSX.read(evt.target.result, {type:'array', cellDates:true});
+      const dealSheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'deal list');
+      const depSheetName  = wb.SheetNames.find(n => n.trim().toLowerCase() === 'syndicator deposits');
+      if (!dealSheetName && !depSheetName) {
+        document.getElementById('qmd-status').innerHTML = `⚠️ Couldn't find "Deal List" or "Syndicator Deposits" tabs. Sheets found: ${wb.SheetNames.join(', ')}`;
+        return;
+      }
+
+      QMD_DEPOSITS = [];
+      if (depSheetName) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[depSheetName], {defval:''}).map(trimKeys);
+        QMD_DEPOSITS = rows.filter(r => r['Date'] && n(r['Amount']) > 0).map(r => ({
+          date: normalizeDate(r['Date']),
+          amount: n(r['Amount']),
+          total: n(r['Total Syndicated'])
+        }));
+      }
+
+      QMD_DEALS = [];
+      if (dealSheetName) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[dealSheetName], {defval:''}).map(trimKeys);
+        QMD_DEALS = rows.filter(r => r['Agreement'] && r['Deal Name'] && r['Deal Name'] !== 'Deposit').map(r => ({
+          funded: normalizeDate(r['Funded Date']),
+          agreement: r['Agreement'],
+          name: r['Deal Name'],
+          fundedAmount: n(r['Funded Amount']),
+          balance: n(r['Syndicator Balance'])
+        }));
+      }
+
+      const latestTotal = QMD_DEPOSITS.length ? QMD_DEPOSITS[QMD_DEPOSITS.length-1].total : 0;
+      const latestDate  = QMD_DEPOSITS.length ? QMD_DEPOSITS[QMD_DEPOSITS.length-1].date : '';
+      const endingBalance = QMD_DEALS.reduce((a,d) => a + d.balance, 0);
+
+      document.getElementById('qmd-status').textContent =
+        `✓ Loaded ${QMD_DEPOSITS.length} deposits and ${QMD_DEALS.length} deals`;
+      document.getElementById('qmd-check').textContent = ' ✓';
+      document.getElementById('qmd-zone').classList.add('upload-ok');
+      document.getElementById('qmd-results').style.display = 'block';
+
+      document.getElementById('qmd-kpis').innerHTML = [
+        {l:'Cumulative contributed (as of ' + (latestDate||'—') + ')', v: '$'+latestTotal.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})},
+        {l:'Deposit lines', v: QMD_DEPOSITS.length},
+        {l:'Active deals in Deal List', v: QMD_DEALS.length},
+        {l:'Sum of Syndicator Balance column', v: '$'+endingBalance.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})},
+      ].map(k => `<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val">${k.v}</div></div>`).join('');
+
+      const head = '<thead><tr><th>Date</th><th class="td-num">Amount</th><th class="td-num">Total Syndicated (running)</th></tr></thead>';
+      const body = QMD_DEPOSITS.map(d => `<tr><td>${d.date}</td><td class="td-num">$${d.amount.toLocaleString()}</td><td class="td-num">$${d.total.toLocaleString()}</td></tr>`).join('');
+      document.getElementById('qmd-deposits-tbl').innerHTML = head + `<tbody>${body}</tbody>`;
+    } catch (err) {
+      document.getElementById('qmd-status').textContent = '⚠️ Could not read file: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleQMDDrop(e) {
+  e.preventDefault();
+  document.getElementById('qmd-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const input = document.getElementById('qmd-upload');
+  const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+  loadQMD({target:{files:dt.files}});
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
