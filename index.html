@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -209,6 +210,10 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
       <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg>
       Syndication
     </div>
+    <div class="nav-item" onclick="showPanel('reconciliation',this)">
+      <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      Reconciliation
+    </div>
     <div class="nav-label" style="margin-top:.5rem">Setup</div>
     <div class="nav-item" onclick="showPanel('upload',this)">
       <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
@@ -369,6 +374,28 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
 
     <div id="process-btn-wrap" style="display:none;margin-bottom:1.25rem">
       <button class="btn btn-primary" onclick="processData()">⚡ Process & build dashboard</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">③ Or upload your combined Tracking Sheet directly <span id="ts-check" style="color:var(--success)"></span></div>
+      <div class="page-sub" style="margin-bottom:.75rem">Already have Fee Amount + Commission Payment merged into one file (your master ledger)? Upload it here instead of separate SPA/Commission CSVs — no Agreement # needed, matched by Business Name + Funding Date.</div>
+      <label class="upload-zone" id="ts-zone"
+        ondragover="this.classList.add('drag');event.preventDefault()"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleTSDrop(event)">
+        <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        <div class="upload-title">Drop Tracking Sheet .xlsx here</div>
+        <div class="upload-sub">Needs: Funding Date, ISO, Business Name, Advance Type, Amount, Payback, Fee Amount, Commission Payment, Frequency</div>
+        <input type="file" accept=".xlsx,.xls" id="ts-upload" onchange="loadTrackingSheet(event)" style="display:none">
+      </label>
+      <div id="ts-status" style="font-size:12px;color:var(--text3)"></div>
+      <div id="ts-month-wrap" style="display:none;margin-top:.75rem">
+        <div class="controls">
+          <label style="font-size:12px;color:var(--text3)">Funding month to load:</label>
+          <select id="ts-month-select" style="width:160px"></select>
+          <button class="btn btn-primary" onclick="processTrackingSheet()">⚡ Process this month</button>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -589,6 +616,61 @@ thead tr:first-child th{padding:5px 4px;font-size:11px}
         <div class="tbl-wrap" style="max-height:70vh;overflow-y:auto">
           <table id="synd-deals-tbl" style="font-size:11px"></table>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RECONCILIATION -->
+  <div id="reconciliation" class="panel">
+    <div class="page-header header-row">
+      <div>
+        <div class="page-title">Reconciliation</div>
+        <div class="page-sub" id="recon-sub">Compare your Syndicator-Summary calc against Salesforce Remittances Paid</div>
+      </div>
+      <button class="btn" id="recon-export-btn" onclick="exportReconciliation()" style="display:none">⬇ Export Reconciliation to Excel</button>
+    </div>
+
+    <div class="alert alert-info">
+      ℹ️ This compares two numbers per syndicator/month: your calculated <strong>Syn Inc Offset</strong> vs Salesforce's <strong>Gross Amount</strong>, and your calculated <strong>Mgmt Fee</strong> vs Salesforce's <strong>Total Mgmt Fees</strong>. Differences are shown exactly — nothing is hidden or rounded away. Small gaps that disappear in the <em>Cumulative</em> view are almost always timing (remittance landed a few days into the next month); gaps that persist in the cumulative view are real discrepancies worth investigating.
+    </div>
+
+    <div class="card">
+      <div class="card-title">① Upload Salesforce Remittances Paid <span id="recon-check" style="color:var(--success)"></span></div>
+      <label class="upload-zone" id="recon-zone"
+        ondragover="this.classList.add('drag');event.preventDefault()"
+        ondragleave="this.classList.remove('drag')"
+        ondrop="handleReconDrop(event)">
+        <svg width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto .5rem;display:block;color:var(--text3)"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+        <div class="upload-title">Drop Remittances Paid file here (.csv or .xlsx)</div>
+        <div class="upload-sub">Needs columns: Payee, Payable Date, Gross Amount, Mgmt Fees (or Total Management Fees)</div>
+        <input type="file" accept=".csv,.xlsx,.xls" id="recon-upload" onchange="loadRemittances(event)" style="display:none">
+      </label>
+      <div id="recon-status" style="font-size:12px;color:var(--text3)"></div>
+    </div>
+
+    <div id="recon-results" style="display:none">
+      <div class="kpi-grid" id="recon-kpis"></div>
+
+      <div class="controls" style="margin:1rem 0">
+        <div class="seg-control">
+          <button class="seg-btn active" id="recon-mode-month" onclick="setReconMode('month')">📅 This month</button>
+          <button class="seg-btn" id="recon-mode-cum" onclick="setReconMode('cumulative')">📈 Cumulative through month</button>
+        </div>
+        <select id="recon-syndicator-filter" onchange="renderReconciliation()" style="width:220px">
+          <option value="">All syndicators</option>
+        </select>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div class="tbl-wrap">
+          <table id="recon-tbl" style="font-size:11px"></table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <div class="card-title">Unmatched remittance rows</div>
+        <div class="page-sub" style="margin-bottom:.5rem">Payee names in the Remittances file that don't match any syndicator in your Syndicator-Summary, or dates falling outside Oct 2025–Apr 2026. Check spelling/aliases if this list isn't empty.</div>
+        <div class="tbl-wrap"><table id="recon-unmatched-tbl"></table></div>
       </div>
     </div>
   </div>
@@ -986,7 +1068,118 @@ function processData() {
   alert(`✓ Done! ${processedDeals.length} deals processed. Renewal deals are highlighted in the Monthly Funded tab — enter their Bank Transaction amounts there.`);
 }
 
-// ── Excel Export — formula-based, matching exact column order from your file ──
+// ── Combined Tracking Sheet upload (single file, already merged) ──────────────
+let tsRows = [];
+
+function excelDateToISO(v) {
+  if (v instanceof Date && !isNaN(v)) {
+    return v.getFullYear() + '-' + String(v.getMonth()+1).padStart(2,'0') + '-' + String(v.getDate()).padStart(2,'0');
+  }
+  if (typeof v === 'number') {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+  }
+  const s = String(v||'').trim();
+  const d2 = new Date(s);
+  if (s && !isNaN(d2)) return d2.getFullYear()+'-'+String(d2.getMonth()+1).padStart(2,'0')+'-'+String(d2.getDate()).padStart(2,'0');
+  return '';
+}
+
+function loadTrackingSheet(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById('ts-status').textContent = 'Reading file...';
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const wb = XLSX.read(evt.target.result, {type:'array', cellDates:true});
+      const sheetName = wb.SheetNames.find(n => n.trim().toLowerCase() === 'main') || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const raw = XLSX.utils.sheet_to_json(ws, {defval:''});
+      tsRows = raw.map(r => ({
+        funded: excelDateToISO(r['Funding Date']),
+        iso: r['ISO'] || '',
+        merchant: r['Business Name'] || '',
+        advanceType: r['Advance Type'] || 'New',
+        amount: n(r['Amount']),
+        payback: n(r['Payback']),
+        freq: r['Frequency'] || '',
+        origFee: n(r['Fee Amount']),
+        commFee: n(r['Commission Payment']),
+      })).filter(r => r.funded && r.merchant && r.amount > 0);
+
+      if (!tsRows.length) {
+        document.getElementById('ts-status').innerHTML = `⚠️ No usable rows found in sheet "${sheetName}". Columns found: ${raw[0]?Object.keys(raw[0]).join(', '):'(none)'}`;
+        return;
+      }
+
+      // Build distinct funding months present, most recent first
+      const months = [...new Set(tsRows.map(r => r.funded.substring(0,7)))].sort().reverse();
+      const sel = document.getElementById('ts-month-select');
+      sel.innerHTML = months.map(m => {
+        const [y,mo] = m.split('-');
+        const label = new Date(y, mo-1, 1).toLocaleDateString(undefined,{month:'long',year:'numeric'});
+        return `<option value="${m}">${label}</option>`;
+      }).join('');
+
+      document.getElementById('ts-status').textContent = `✓ Loaded ${tsRows.length} rows from sheet "${sheetName}" across ${months.length} month(s)`;
+      document.getElementById('ts-check').textContent = ' ✓';
+      document.getElementById('ts-zone').classList.add('upload-ok');
+      document.getElementById('ts-month-wrap').style.display = 'block';
+    } catch (err) {
+      document.getElementById('ts-status').textContent = '⚠️ Could not read file: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function handleTSDrop(e) {
+  e.preventDefault();
+  document.getElementById('ts-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const input = document.getElementById('ts-upload');
+  const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+  loadTrackingSheet({target:{files:dt.files}});
+}
+
+function processTrackingSheet() {
+  const moKey = document.getElementById('ts-month-select').value;
+  if (!moKey) return;
+  const monthRows = tsRows.filter(r => r.funded.substring(0,7) === moKey);
+  if (!monthRows.length) { alert('No rows found for that month.'); return; }
+
+  processedDeals = monthRows.map(row => {
+    const isRenewalType = /renew|add.?on/i.test(row.advanceType);
+    // Synthetic key since Tracking Sheet has no Agreement #; used for bank-tx overrides in Monthly tab.
+    const agr = `TS-${row.funded}-${row.merchant}`.replace(/\s+/g,'_');
+    return calcDeal({
+      agr, merchant: row.merchant, iso: row.iso, funded: row.funded,
+      amount: row.amount, repayment: row.payback,
+      origFee: row.origFee, commFee: row.commFee,
+      status: 'Performing', freq: row.freq, state: '',
+      position: isRenewalType ? '+2' : '+1'
+    });
+  }).filter(d => d.amount > 0);
+
+  bankTxOverrides = {};
+  dataLoaded = true;
+
+  document.getElementById('data-label').textContent = moKey + ' data (Tracking Sheet)';
+  document.getElementById('ov-sub').textContent = `${processedDeals.length} deals · From Tracking Sheet`;
+  document.getElementById('mo-sub').textContent = `${processedDeals.length} deals`;
+  document.getElementById('cm-sub').textContent = `${processedDeals.length} deals`;
+
+  buildOverview();
+  buildMonthly();
+  buildCommissions();
+  buildAllDeals();
+
+  showPanel('overview', document.querySelector('.nav-item'));
+  alert(`✓ Done! ${processedDeals.length} deals processed from the Tracking Sheet for ${moKey}. Renewal/Add-on deals are highlighted in the Monthly Funded tab — enter their Bank Transaction amounts there.`);
+}
+
+
 function exportExcel(tab) {
   const deals = processedDeals.length ? processedDeals : SAMPLE_DEALS.map(calcDeal);
   if (!deals.length) { alert('No data loaded.'); return; }
@@ -2303,6 +2496,310 @@ function exportSyndicationSupport() {
 
   XLSX.utils.book_append_sheet(wb, ws, 'Syndication Support');
   XLSX.writeFile(wb, '1st_Alliance_Syndication_Support.xlsx');
+}
+
+// ── Reconciliation (Syndicator-Summary calc vs Salesforce Remittances Paid) ───
+let REMIT_RAW = [];
+let REMIT_AGG = {};
+let REMIT_UNMATCHED = [];
+let reconMode = 'month';
+
+function normName(s) { return String(s||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function parseAnyDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) return v;
+  const s = String(v).trim();
+  if (!s) return null;
+  const d = new Date(s);
+  if (!isNaN(d)) return d;
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (m) {
+    let [,mo,da,yr] = m;
+    yr = yr.length===2 ? '20'+yr : yr;
+    const d2 = new Date(parseInt(yr), parseInt(mo)-1, parseInt(da));
+    if (!isNaN(d2)) return d2;
+  }
+  return null;
+}
+
+function pickField(row, patterns) {
+  const keys = Object.keys(row);
+  for (const p of patterns) {
+    const k = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g,'').includes(p));
+    if (k) return k;
+  }
+  return null;
+}
+
+function dateToMonthKeyRecon(d) {
+  if (!d) return null;
+  const m = d.getMonth()+1, y = d.getFullYear();
+  const found = SYND_MONTHS.find(x => x.month===m && x.year===y);
+  return found ? found.key : null;
+}
+
+function loadRemittances(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const lower = file.name.toLowerCase();
+  document.getElementById('recon-status').textContent = 'Reading file...';
+  if (lower.endsWith('.csv')) {
+    Papa.parse(file, {header:true, skipEmptyLines:true, complete(results){ processRemittanceRows(results.data); }});
+  } else {
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      try {
+        const wb = XLSX.read(evt.target.result, {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+        processRemittanceRows(rows);
+      } catch (err) {
+        document.getElementById('recon-status').textContent = '⚠️ Could not read file: ' + err.message;
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
+function handleReconDrop(e) {
+  e.preventDefault();
+  document.getElementById('recon-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const input = document.getElementById('recon-upload');
+  const dt = new DataTransfer(); dt.items.add(file); input.files = dt.files;
+  loadRemittances({target:{files:dt.files}});
+}
+
+function processRemittanceRows(rows) {
+  if (!rows || !rows.length) {
+    document.getElementById('recon-status').textContent = '⚠️ No rows found in file.';
+    return;
+  }
+  const sample = rows[0];
+  const kPayee = pickField(sample, ['payee']);
+  const kDate  = pickField(sample, ['payabledate']) || pickField(sample, ['paydate']) || pickField(sample, ['date']);
+  const kGross = pickField(sample, ['grossamount']) || pickField(sample, ['gross']);
+  const kFees  = pickField(sample, ['totalmanagementfees']) || pickField(sample, ['mgmtfees']) || pickField(sample, ['managementfees']) || pickField(sample, ['mgmtfee']);
+  const kAgr   = pickField(sample, ['agreement']);
+
+  if (!kPayee || !kDate || !kGross) {
+    document.getElementById('recon-status').innerHTML =
+      `⚠️ Could not find Payee / Payable Date / Gross Amount columns. Columns found: ${Object.keys(sample).join(', ')}`;
+    return;
+  }
+
+  REMIT_RAW = rows.map(r => ({
+    payee: r[kPayee],
+    date: parseAnyDate(r[kDate]),
+    gross: n(r[kGross]),
+    mgmtFees: kFees ? n(r[kFees]) : 0,
+    agreement: kAgr ? r[kAgr] : ''
+  })).filter(r => r.payee && r.date);
+
+  document.getElementById('recon-status').textContent = `✓ Loaded ${REMIT_RAW.length} remittance lines`;
+  document.getElementById('recon-check').textContent = ' ✓';
+  document.getElementById('recon-zone').classList.add('upload-ok');
+  document.getElementById('recon-export-btn').style.display = 'inline-block';
+  document.getElementById('recon-results').style.display = 'block';
+
+  buildReconciliation();
+}
+
+function buildReconciliation() {
+  REMIT_AGG = {};
+  REMIT_UNMATCHED = [];
+  const nameMap = {};
+  SYND_SUMMARY.forEach(s => { nameMap[normName(s.s)] = s.s; });
+  const normKeys = Object.keys(nameMap);
+
+  REMIT_RAW.forEach(r => {
+    const rn = normName(r.payee);
+    let matched = nameMap[rn];
+    if (!matched) {
+      const k = normKeys.find(k => k.length>3 && (k.includes(rn) || rn.includes(k)));
+      matched = k ? nameMap[k] : null;
+    }
+    const mk = dateToMonthKeyRecon(r.date);
+    if (!matched || !mk) { REMIT_UNMATCHED.push(r); return; }
+    if (!REMIT_AGG[matched]) REMIT_AGG[matched] = {};
+    if (!REMIT_AGG[matched][mk]) REMIT_AGG[matched][mk] = {gross:0, mgmtFees:0, count:0};
+    REMIT_AGG[matched][mk].gross    += r.gross;
+    REMIT_AGG[matched][mk].mgmtFees += r.mgmtFees;
+    REMIT_AGG[matched][mk].count++;
+  });
+
+  const sel = document.getElementById('recon-syndicator-filter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All syndicators</option>' + SYND_SUMMARY.map(s=>`<option value="${s.s}">${s.s}</option>`).join('');
+  sel.value = cur;
+
+  renderReconKPIs();
+  renderReconciliation();
+  renderReconUnmatched();
+}
+
+function setReconMode(mode) {
+  reconMode = mode;
+  document.getElementById('recon-mode-month').classList.toggle('active', mode==='month');
+  document.getElementById('recon-mode-cum').classList.toggle('active', mode==='cumulative');
+  renderReconciliation();
+}
+
+function reconCumulative(series, uptoIdx) {
+  let sum = 0;
+  for (let i=0;i<=uptoIdx;i++) sum += series[i]||0;
+  return sum;
+}
+
+function renderReconKPIs() {
+  let flagged = 0, cells = 0;
+  SYND_SUMMARY.forEach(s => {
+    SYND_MONTHS.forEach(m => {
+      const co = Math.abs(s.m[m.key].inc_offset||0);
+      const sg = (REMIT_AGG[s.s] && REMIT_AGG[s.s][m.key] && REMIT_AGG[s.s][m.key].gross) || 0;
+      cells++;
+      if (Math.abs(co-sg) >= 1) flagged++;
+    });
+  });
+  const kpis = [
+    {l:'Remittance lines loaded', v: REMIT_RAW.length},
+    {l:'Unmatched lines', v: REMIT_UNMATCHED.length},
+    {l:'Syndicator × month cells', v: cells},
+    {l:'Flagged (this-month, ≥$1 diff)', v: flagged},
+  ];
+  document.getElementById('recon-kpis').innerHTML = kpis.map(k =>
+    `<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-val" style="${k.l.startsWith('Flagged')&&k.v>0?'color:#C00000':''}">${k.v.toLocaleString()}</div></div>`
+  ).join('');
+}
+
+function renderReconciliation() {
+  const filterSynd = document.getElementById('recon-syndicator-filter').value;
+  const fmtMoney = v => (v<0?'-':'') + '$' + Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  const rows = SYND_SUMMARY.filter(s => !filterSynd || s.s===filterSynd);
+
+  let head = '<tr><th rowspan="2" style="vertical-align:middle">Syndicator</th>';
+  SYND_MONTHS.forEach(m => { head += `<th colspan="6" class="month-block" style="text-align:center">${m.label}</th>`; });
+  head += '</tr><tr>';
+  SYND_MONTHS.forEach(() => {
+    head += '<th>Calc Offset</th><th>SF Gross</th><th>Δ</th><th>Calc Fee</th><th>SF Fee</th><th>Δ</th>';
+  });
+  head += '</tr>';
+
+  let body = '';
+  rows.forEach(s => {
+    const calcOffsetSeries = SYND_MONTHS.map(m => Math.abs(s.m[m.key].inc_offset||0));
+    const calcFeeSeries    = SYND_MONTHS.map(m => Math.abs(s.m[m.key].mgmt_fee||0));
+    const sfAgg = REMIT_AGG[s.s] || {};
+    const sfGrossSeries = SYND_MONTHS.map(m => (sfAgg[m.key]?.gross)||0);
+    const sfFeeSeries   = SYND_MONTHS.map(m => (sfAgg[m.key]?.mgmtFees)||0);
+
+    body += `<tr><td><strong>${s.s}</strong></td>`;
+    SYND_MONTHS.forEach((m, i) => {
+      let co, sg, cf, sf;
+      if (reconMode === 'cumulative') {
+        co = reconCumulative(calcOffsetSeries, i); sg = reconCumulative(sfGrossSeries, i);
+        cf = reconCumulative(calcFeeSeries, i);    sf = reconCumulative(sfFeeSeries, i);
+      } else {
+        co = calcOffsetSeries[i]; sg = sfGrossSeries[i]; cf = calcFeeSeries[i]; sf = sfFeeSeries[i];
+      }
+      const dOffset = co - sg, dFee = cf - sf;
+      const clsOffset = Math.abs(dOffset) < 1 ? 'color:var(--success)' : 'color:#C00000;font-weight:600';
+      const clsFee     = Math.abs(dFee) < 1 ? 'color:var(--success)' : 'color:#C00000;font-weight:600';
+      body += `<td class="td-num">${fmtMoney(co)}</td><td class="td-num">${fmtMoney(sg)}</td><td class="td-num" style="${clsOffset}">${fmtMoney(dOffset)}</td>`;
+      body += `<td class="td-num">${fmtMoney(cf)}</td><td class="td-num">${fmtMoney(sf)}</td><td class="td-num" style="${clsFee}">${fmtMoney(dFee)}</td>`;
+    });
+    body += '</tr>';
+  });
+
+  document.getElementById('recon-tbl').innerHTML = `<thead>${head}</thead><tbody>${body}</tbody>`;
+}
+
+function renderReconUnmatched() {
+  const fmtDate = d => d ? d.toLocaleDateString() : '';
+  const head = '<thead><tr><th>Payee (as in file)</th><th>Payable Date</th><th>Gross Amount</th></tr></thead>';
+  if (!REMIT_UNMATCHED.length) {
+    document.getElementById('recon-unmatched-tbl').innerHTML = head + '<tbody><tr><td colspan="3" style="color:var(--text3)">None — every remittance row matched a syndicator and an Oct 2025–Apr 2026 month.</td></tr></tbody>';
+    return;
+  }
+  const rowsHtml = REMIT_UNMATCHED.slice(0,500).map(r =>
+    `<tr><td>${r.payee}</td><td>${fmtDate(r.date)}</td><td class="td-num">${r.gross.toLocaleString(undefined,{minimumFractionDigits:2})}</td></tr>`
+  ).join('');
+  document.getElementById('recon-unmatched-tbl').innerHTML = head + `<tbody>${rowsHtml}</tbody>` +
+    (REMIT_UNMATCHED.length>500 ? `<tfoot><tr><td colspan="3">...and ${REMIT_UNMATCHED.length-500} more</td></tr></tfoot>` : '');
+}
+
+function exportReconciliation() {
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+  const cellBorder = {top:{style:'thin',color:{rgb:'BFBFBF'}},bottom:{style:'thin',color:{rgb:'BFBFBF'}},
+                       left:{style:'thin',color:{rgb:'BFBFBF'}},right:{style:'thin',color:{rgb:'BFBFBF'}}};
+  const sTitle    = {font:{bold:true,sz:14,color:{rgb:'1F4E79'}}};
+  const sSubtitle = {font:{italic:true,sz:10,color:{rgb:'7F7F7F'}}};
+  const sMonthHdr = {font:{bold:true,sz:11,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1F4E79'}},
+                     alignment:{horizontal:'center',vertical:'center'},border:cellBorder};
+  const sColHdr   = {font:{bold:true,sz:10,color:{rgb:'1F4E79'}},fill:{fgColor:{rgb:'CCDFF2'}},
+                     alignment:{horizontal:'center',vertical:'center',wrapText:true},border:cellBorder};
+  const sLabel    = {font:{sz:10,bold:true,color:{rgb:'1F4E79'}},alignment:{horizontal:'left'},border:cellBorder};
+  const sNum      = {font:{sz:10},alignment:{horizontal:'right'},border:cellBorder};
+  const sNumFlag  = {font:{sz:10,bold:true,color:{rgb:'C00000'}},alignment:{horizontal:'right'},border:cellBorder};
+
+  ws['A1'] = {t:'s', v:`1st Alliance — Syndicator Reconciliation (${reconMode==='cumulative'?'Cumulative through month':'This month'})`, s:sTitle};
+  ws['A2'] = {t:'s', v:'Calculated Syn Inc Offset / Mgmt Fee vs Salesforce Remittances Paid Gross Amount / Total Mgmt Fees', s:sSubtitle};
+
+  let row = 4;
+  const nFixed = 1;
+  ws[colLetter(1)+row] = {t:'s', v:'Syndicator', s:sMonthHdr};
+  SYND_MONTHS.forEach((m, mi) => {
+    ws[colLetter(nFixed+mi*6+1)+row] = {t:'s', v:m.label, s:sMonthHdr};
+  });
+  row++;
+  ws[colLetter(1)+row] = {t:'s', v:'', s:sColHdr};
+  SYND_MONTHS.forEach((m, mi) => {
+    const start = nFixed + mi*6 + 1;
+    ['Calc Offset','SF Gross','Δ Offset','Calc Fee','SF Fee','Δ Fee'].forEach((lbl,li) => {
+      ws[colLetter(start+li)+row] = {t:'s', v:lbl, s:sColHdr};
+    });
+  });
+  row++;
+
+  SYND_SUMMARY.forEach(s => {
+    ws[colLetter(1)+row] = {t:'s', v:s.s, s:sLabel};
+    const sfAgg = REMIT_AGG[s.s] || {};
+    const calcOffsetSeries = SYND_MONTHS.map(m => Math.abs(s.m[m.key].inc_offset||0));
+    const calcFeeSeries    = SYND_MONTHS.map(m => Math.abs(s.m[m.key].mgmt_fee||0));
+    const sfGrossSeries    = SYND_MONTHS.map(m => (sfAgg[m.key]?.gross)||0);
+    const sfFeeSeries      = SYND_MONTHS.map(m => (sfAgg[m.key]?.mgmtFees)||0);
+
+    SYND_MONTHS.forEach((m, i) => {
+      let co, sg, cf, sf;
+      if (reconMode === 'cumulative') {
+        co = reconCumulative(calcOffsetSeries, i); sg = reconCumulative(sfGrossSeries, i);
+        cf = reconCumulative(calcFeeSeries, i);    sf = reconCumulative(sfFeeSeries, i);
+      } else {
+        co = calcOffsetSeries[i]; sg = sfGrossSeries[i]; cf = calcFeeSeries[i]; sf = sfFeeSeries[i];
+      }
+      const dOffset = co-sg, dFee = cf-sf;
+      const start = nFixed + i*6 + 1;
+      ws[colLetter(start)  +row] = {t:'n', v:co, z:'#,##0.00', s:sNum};
+      ws[colLetter(start+1)+row] = {t:'n', v:sg, z:'#,##0.00', s:sNum};
+      ws[colLetter(start+2)+row] = {t:'n', v:dOffset, z:'#,##0.00;(#,##0.00)', s: Math.abs(dOffset)>=1 ? sNumFlag : sNum};
+      ws[colLetter(start+3)+row] = {t:'n', v:cf, z:'#,##0.00', s:sNum};
+      ws[colLetter(start+4)+row] = {t:'n', v:sf, z:'#,##0.00', s:sNum};
+      ws[colLetter(start+5)+row] = {t:'n', v:dFee, z:'#,##0.00;(#,##0.00)', s: Math.abs(dFee)>=1 ? sNumFlag : sNum};
+    });
+    row++;
+  });
+
+  const totalCols = nFixed + SYND_MONTHS.length*6;
+  ws['!cols'] = Array.from({length: totalCols}, (_,i) => ({wch: i===0?26:13}));
+  ws['!merges'] = [{s:{r:3,c:0},e:{r:4,c:0}}];
+  SYND_MONTHS.forEach((m, mi) => { ws['!merges'].push({s:{r:3,c:nFixed+mi*6},e:{r:3,c:nFixed+mi*6+5}}); });
+  ws['!ref'] = `A1:${colLetter(totalCols)}${row-1}`;
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Reconciliation');
+  XLSX.writeFile(wb, '1st_Alliance_Reconciliation.xlsx');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
