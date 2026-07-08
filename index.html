@@ -1417,8 +1417,21 @@ function exportSPAReport(deals, monthLabel, commSheet, spaSheet) {
     'Clawback','Net Commission','Date Paid'
   ];
   commHdrs.forEach((h,i) => { ws3[colLetter(i+1)+'1'] = {t:'s',v:h,s:{font:{bold:true}}}; });
-  ws3['A2'] = {t:'s', v:'← Paste your Commission CSV export here. Col M = Fee Amount, Col O = Commission Payment.'};
-  ws3['!ref'] = `A1:${colLetter(commHdrs.length)}2`;
+  // Populate with the actual per-deal Fee Amount (col M) / Total Commission (col O) already
+  // computed for each deal, so the SUMIFS formulas on the SPA sheet resolve to real numbers
+  // instead of coming back blank. (Previously this sheet was left as an empty placeholder.)
+  deals.forEach((d,ri) => {
+    const r = ri + 2;
+    ws3[`A${r}`] = {t:'s', v: d.agr};
+    ws3[`B${r}`] = {t:'s', v: 'ACH'};
+    ws3[`C${r}`] = {t:'s', v: d.status||'Active'};
+    ws3[`D${r}`] = {t:'s', v: d.contactId||''};
+    ws3[`E${r}`] = {t:'s', v: d.merchant};
+    ws3[`M${r}`] = {t:'n', v: n(d.origFee), z:'#,##0.00'};
+    ws3[`N${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};
+    ws3[`O${r}`] = {t:'n', v: n(d.commFee), z:'#,##0.00'};
+  });
+  ws3['!ref'] = `A1:${colLetter(commHdrs.length)}${deals.length+1}`;
   ws3['!cols'] = commHdrs.map((_,i) => ({wch: i===4?42:i===0?16:14}));
   XLSX.utils.book_append_sheet(wb, ws3, `${monthLabel} Commission`);
 
